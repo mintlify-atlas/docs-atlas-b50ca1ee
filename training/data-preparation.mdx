@@ -1,0 +1,191 @@
+---
+title: "Data Preparation"
+description: "Prepare audio data for OmniVoice training by tokenizing audio into WebDataset shards."
+---
+
+OmniVoice trains on a custom WebDataset format where audio data is packed into **tar shards** with paired **JSONL metadata** files. Each shard contains hundreds to thousands of samples as `.npy` audio token arrays, which drastically reduces disk I/O during training by replacing thousands of tiny files with a few large sequential archives.
+
+## Input Format
+
+Prepare a JSONL file where each line is a JSON object describing one sample:
+
+```jsonl
+{"id": "sample_001", "audio_path": "/data/audio/001.wav", "text": "Hello world", "language_id": "en"}
+{"id": "sample_002", "audio_path": "/data/audio/002.wav", "text": "你好世界", "language_id": "zh"}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `id` | Yes | Unique sample identifier used to match samples across shards and label files |
+| `audio_path` | Yes | Absolute path to the audio file (wav/flac/mp3); resampled to 24 kHz automatically |
+| `text` | Yes | Transcript text for the audio |
+| `language_id` | No | Language code (e.g. `en`, `zh`) used for multilingual training; can be omitted |
+
+## Tokenizing Audio
+
+The `extract_audio_tokens.py` script converts audio into 8-layer discrete tokens and packs them into WebDataset shards.
+
+<Steps>
+  <Step title="Set visible GPUs">
+    Export the GPU IDs you want to use for token extraction:
+
+    ```bash
+    export CUDA_VISIBLE_DEVICES="0,1,2,4"
+    ```
+  </Step>
+
+  <Step title="Run the tokenization script">
+    ```bash
+    python -m omnivoice.scripts.extract_audio_tokens \
+        --input_jsonl data.jsonl \
+        --tar_output_pattern output/audios/shard-%06d.tar \
+        --jsonl_output_pattern output/txts/shard-%06d.jsonl \
+        --tokenizer_path eustlb/higgs-audio-v2-tokenizer \
+        --nj_per_gpu 3 \
+        --shuffle True
+    ```
+
+    The script will:
+    1. Read your JSONL manifest
+    2. Encode each audio file into discrete tokens using the audio tokenizer
+    3. Pack tokens into WebDataset tar shards with paired JSONL metadata files
+    4. Write a `data.lst` manifest linking shards to metadata
+  </Step>
+</Steps>
+
+### Script Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--input_jsonl` | None | Path to raw JSONL file; mutually exclusive with `--input_manifest` |
+| `--input_manifest` | None | Path to input dataset manifest (`data.lst`); mutually exclusive with `--input_jsonl` |
+| `--tar_output_pattern` | (required) | Tar shard output pattern, e.g. `output/audios/shard-%06d.tar` |
+| `--jsonl_output_pattern` | (required) | JSONL shard output pattern, e.g. `output/txts/shard-%06d.jsonl` |
+| `--tokenizer_path` | `eustlb/higgs-audio-v2-tokenizer` | HuggingFace tokenizer repo or local path |
+| `--nj_per_gpu` | `3` | Worker processes per GPU |
+| `--loader_workers` | `24` | DataLoader workers for streaming `IterableDataset` |
+| `--shuffle` | `True` | Shuffle samples before sharding |
+| `--shuffle-seed` | `42` | Random seed for shuffling |
+| `--samples_per_shard` | `1000` | Maximum samples per tar shard |
+| `--min_num_shards` | `32` | Minimum number of output shards (ensures count ≥ num\_gpu × num\_workers) |
+| `--min_length` | `0.0` | Skip audio shorter than this many seconds |
+| `--max_length` | `inf` | Skip audio longer than this many seconds |
+| `--skip_errors` | `False` | Continue on processing errors instead of aborting |
+| `--num_machines` | `1` | Total number of machines for distributed preprocessing runs |
+| `--machine_index` | `0` | Zero-based index of this machine for distributed preprocessing |
+
+## Output Structure
+
+Using the output patterns `output/audios/shard-%06d.tar` and `output/txts/shard-%06d.jsonl`, the script produces:
+
+```
+output/
+├── audios/                    # WebDataset tar shards (audio tokens)
+│   ├── shard-000000.tar       # Each tar packs ~1000 samples
+│   ├── shard-000001.tar
+│   └── ...
+├── txts/                      # Per-shard companion JSONL labels
+│   ├── shard-000000.jsonl     # One JSON line per sample in the corresponding tar
+│   ├── shard-000001.jsonl
+│   └── ...
+├── data.lst                   # Manifest linking tar ↔ jsonl shards
+└── errors.jsonl               # Samples that failed processing (if any)
+```
+
+<Note>
+  `data.lst` and `errors.jsonl` are written to the **parent directory** of `audios/` and `txts/`.
+</Note>
+
+### The `data.lst` Manifest
+
+Each line in `data.lst` describes one shard:
+
+```
+/path/to/shard-000000.tar /path/to/shard-000000.jsonl 1000 3600.500
+/path/to/shard-000001.tar /path/to/shard-000001.jsonl 800 2880.200
+```
+
+Format: `<tar_path> <jsonl_path> <num_samples> <total_duration_seconds>`
+
+- Paths are **absolute**
+- The `.tar` file contains the audio token arrays
+- The `.jsonl` file mirrors the original input metadata, so you can inspect or modify it without decompressing the tar
+- This manifest is what the training data config references
+
+### Inside a Tar Shard
+
+Each `.tar` file packs many samples into a single archive. Each sample is stored as a `.npy` file:
+
+```
+shard-000000.tar:
+  sample_001.npy    # Audio tokens: numpy array, shape [8, T], dtype int16
+  sample_002.npy
+  ...
+  sample_1000.npy
+```
+
+The key training benefit is that instead of reading thousands of tiny audio files, the dataloader reads sequentially from a few large tars, drastically reducing disk I/O pressure.
+
+## Data Config for Training
+
+After tokenizing, write a data config JSON that references your `data.lst` manifests:
+
+```json
+{
+    "train": [
+        {
+            "language_id": "en",
+            "manifest_path": ["data/custom/tokens/train/data.lst"],
+            "repeat": 1
+        }
+    ],
+    "dev": [
+        {
+            "language_id": "en",
+            "manifest_path": ["data/custom/tokens/dev/data.lst"],
+            "repeat": 1
+        }
+    ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `manifest_path` | List of `data.lst` files (one per shard directory) |
+| `repeat` | How many times to repeat this dataset per epoch; useful for balancing languages |
+| `language_id` | Not used by the model; serves as an organizational label only |
+
+For a multilingual setup with multiple datasets, add additional entries to the `train` and `dev` arrays. See `examples/config/data_config_emilia.json` for a ready-to-use two-language example.
+
+## Alternative: WebDataset Input
+
+If you already have raw-audio WebDataset tar shards (e.g. from a previous pipeline), convert them first using `jsonl_to_webdataset.py`, then pass the resulting manifest to `extract_audio_tokens`:
+
+<Steps>
+  <Step title="Pack raw audio into WebDataset shards">
+    ```bash
+    python -m omnivoice.scripts.jsonl_to_webdataset \
+        --input data.jsonl \
+        --output data/shards \
+        --sr 24000 \
+        --shard-size 1000
+    ```
+
+    This resamples audio to 24 kHz and packs FLAC files into tar shards with paired JSONL metadata. A `data.lst` manifest is written to `data/shards/`.
+  </Step>
+
+  <Step title="Tokenize from the existing manifest">
+    Pass `--input_manifest` instead of `--input_jsonl`:
+
+    ```bash
+    export CUDA_VISIBLE_DEVICES="0,1,2,4"
+    python -m omnivoice.scripts.extract_audio_tokens \
+        --input_manifest existing_data/data.lst \
+        --tar_output_pattern output/audios/shard-%06d.tar \
+        --jsonl_output_pattern output/txts/shard-%06d.jsonl \
+        --tokenizer_path eustlb/higgs-audio-v2-tokenizer \
+        --nj_per_gpu 3 \
+        --shuffle True
+    ```
+  </Step>
+</Steps>

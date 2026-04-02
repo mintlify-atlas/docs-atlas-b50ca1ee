@@ -1,0 +1,208 @@
+---
+title: "Voice Design"
+description: "Describe a voice using text attributes — gender, age, pitch, accent, and more — without any reference audio."
+---
+
+Voice design mode lets you craft a speaker from scratch by describing it. Instead of providing an audio sample, you pass an `instruct` string containing speaker attributes. OmniVoice synthesises a matching voice on the fly — no reference recording required.
+
+## Basic Example
+
+```python
+from omnivoice import OmniVoice
+import torch
+import torchaudio
+
+model = OmniVoice.from_pretrained(
+    "k2-fsa/OmniVoice",
+    device_map="cuda:0",
+    dtype=torch.float16,
+)
+
+audio = model.generate(
+    text="Hello, this is a test of zero-shot voice design.",
+    instruct="female, low pitch, british accent",
+)
+
+torchaudio.save("out.wav", audio[0], 24000)
+```
+
+The `instruct` string drives the entire voice selection. No `ref_audio` or `ref_text` is needed.
+
+## How It Works
+
+The `instruct` parameter accepts a **comma-separated list of speaker attributes**. Each attribute belongs to one category (gender, age, pitch, style, accent, or dialect). You may specify at most one attribute per category; attributes across different categories can be freely combined.
+
+OmniVoice auto-detects whether the instruct text is in English or Chinese and normalises it internally. Half-width commas (`,`) and full-width commas (`，`) are both accepted.
+
+<Info>
+  Attributes are **case-insensitive**. `"Male"`, `"MALE"`, and `"male"` are all normalised to `"male"` before processing.
+</Info>
+
+## Attribute Reference
+
+### Gender
+
+| English | Chinese |
+|---------|---------|
+| `male` | `男` |
+| `female` | `女` |
+
+### Age
+
+| English | Chinese |
+|---------|---------|
+| `child` | `儿童` |
+| `teenager` | `少年` |
+| `young adult` | `青年` |
+| `middle-aged` | `中年` |
+| `elderly` | `老年` |
+
+### Pitch
+
+| English | Chinese |
+|---------|---------|
+| `very low pitch` | `极低音调` |
+| `low pitch` | `低音调` |
+| `moderate pitch` | `中音调` |
+| `high pitch` | `高音调` |
+| `very high pitch` | `极高音调` |
+
+### Style
+
+| English | Chinese |
+|---------|---------|
+| `whisper` | `耳语` |
+
+### English Accent
+
+Only applied when the synthesis text is in English.
+
+| Accent |
+|--------|
+| `american accent` |
+| `british accent` |
+| `australian accent` |
+| `canadian accent` |
+| `indian accent` |
+| `chinese accent` |
+| `korean accent` |
+| `japanese accent` |
+| `portuguese accent` |
+| `russian accent` |
+
+### Chinese Dialect
+
+Only applied when the synthesis text is in Chinese.
+
+| Dialect |
+|---------|
+| `河南话` |
+| `陕西话` |
+| `四川话` |
+| `贵州话` |
+| `云南话` |
+| `桂林话` |
+| `济南话` |
+| `石家庄话` |
+| `甘肃话` |
+| `宁夏话` |
+| `青岛话` |
+| `东北话` |
+
+## Writing Instruct Strings
+
+<Steps>
+  <Step title="Choose one attribute per category">
+    You cannot specify two genders, two age groups, etc. within a single instruct string. Attributes from different categories can be freely mixed.
+  </Step>
+  <Step title="Separate with commas">
+    Use half-width commas for English attributes and full-width commas for Chinese attributes. The model auto-fixes mixed usage.
+  </Step>
+  <Step title="Omit what you don't need">
+    Any omitted category is filled in by the model. `"female"` alone is a valid instruct string — the model picks a plausible age, pitch, and style.
+  </Step>
+</Steps>
+
+## Combination Examples
+
+<CodeGroup>
+
+```python English attributes
+audio = model.generate(
+    text="Welcome to the evening broadcast.",
+    instruct="male, middle-aged, low pitch",
+)
+```
+
+```python Chinese attributes
+audio = model.generate(
+    text="欢迎收听今晚的新闻联播。",
+    instruct="男，中年，低音调",
+)
+```
+
+```python Mixed English and Chinese
+audio = model.generate(
+    text="欢迎收听今晚的新闻联播。",
+    instruct="male, middle-aged, 四川话",
+)
+```
+
+```python Whisper style
+audio = model.generate(
+    text="This is a secret. Keep it between us.",
+    instruct="female, young adult, whisper",
+)
+```
+
+```python British accent
+audio = model.generate(
+    text="I do believe this is quite a splendid morning.",
+    instruct="female, young adult, high pitch, british accent",
+)
+```
+
+```python Elderly with very low pitch
+audio = model.generate(
+    text="Back in my day, things were different.",
+    instruct="male, elderly, very low pitch",
+)
+```
+
+</CodeGroup>
+
+## Tips
+
+<CardGroup cols={2}>
+  <Card title="Combine freely" icon="sliders">
+    Mix any combination of categories: `"male, elderly, low pitch, whisper"` is valid. The more attributes you specify, the more tightly constrained the output voice.
+  </Card>
+  <Card title="Accent vs dialect" icon="language">
+    English accents only affect English speech; Chinese dialects only affect Chinese speech. Specifying both in a single string is fine if you plan to switch languages.
+  </Card>
+  <Card title="Leave gaps for variety" icon="shuffle">
+    Omitting categories lets the model introduce natural variety across generations. Useful when you want multiple distinct voices that share only one attribute (e.g., all female but varied in age and pitch).
+  </Card>
+  <Card title="Batch design" icon="layer-group">
+    Pass a list of `instruct` strings alongside a list of `text` strings to generate multiple differently-voiced samples in one call.
+  </Card>
+</CardGroup>
+
+### Batch Voice Design Example
+
+```python
+texts = [
+    "Good morning, how can I help you today?",
+    "Good morning, how can I help you today?",
+]
+
+instructs = [
+    "female, young adult, american accent",
+    "male, middle-aged, british accent",
+]
+
+audios = model.generate(text=texts, instruct=instructs)
+
+for i, audio in enumerate(audios):
+    torchaudio.save(f"out_{i}.wav", audio, 24000)
+```

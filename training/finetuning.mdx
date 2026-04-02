@@ -1,0 +1,185 @@
+---
+title: "Fine-Tuning"
+description: "Adapt a pretrained OmniVoice checkpoint to your own data or voice styles in a few thousand steps."
+---
+
+Fine-tuning lets you adapt OmniVoice to custom data, specific voice styles, or new languages without training from scratch. Starting from the pretrained `k2-fsa/OmniVoice` checkpoint, fine-tuning typically converges in around 5,000 steps — compared to 300,000 steps for full training.
+
+## When to Fine-Tune
+
+Fine-tuning is the right choice when you:
+
+- Have a smaller dataset that would underfit a 300k-step training run
+- Want to specialize the model for a particular speaker, accent, or speaking style
+- Need to adapt to a new language or domain not well covered by the pretrained model
+- Want to iterate quickly on a custom voice without the compute cost of training from scratch
+
+## Step-by-Step Guide
+
+<Steps>
+  <Step title="Prepare your JSONL data">
+    Create JSONL manifests for your training and dev splits. Each line is one sample:
+
+    ```jsonl
+    {"id": "sample_001", "audio_path": "/data/audio/001.wav", "text": "Hello world", "language_id": "en"}
+    {"id": "sample_002", "audio_path": "/data/audio/002.wav", "text": "你好世界", "language_id": "zh"}
+    ```
+
+    | Field | Required | Description |
+    |---|---|---|
+    | `id` | Yes | Unique sample identifier |
+    | `audio_path` | Yes | Absolute path to wav/flac/mp3 file |
+    | `text` | Yes | Transcript text |
+    | `language_id` | No | Language code (e.g. `en`, `zh`) |
+
+    See [Data Preparation](/training/data-preparation) for the full format specification.
+  </Step>
+
+  <Step title="Configure run_finetune.sh">
+    Edit the variables at the top of `examples/run_finetune.sh`:
+
+    ```bash
+    # ====== Modify as needed ======
+    # GPUs to use
+    GPU_IDS="0,1"
+    NUM_GPUS=2
+
+    # Path to your input JSONL file
+    TRAIN_JSONL="data/my_data_train.jsonl"
+
+    # Path to your dev JSONL file. Set to empty string to skip dev set.
+    DEV_JSONL="data/my_data_dev.jsonl"
+
+    # Directory to write tokenized WebDataset shards
+    TOKEN_DIR="data/finetune/tokens"
+
+    # Audio tokenizer model (HuggingFace repo or local path)
+    TOKENIZER_PATH="eustlb/higgs-audio-v2-tokenizer"
+
+    # Training config file
+    TRAIN_CONFIG="config/train_config_finetune.json"
+
+    # Output directory for fine-tuned checkpoints
+    OUTPUT_DIR="exp/omnivoice_finetune"
+    # =================================
+    ```
+
+    | Variable | Description |
+    |---|---|
+    | `TRAIN_JSONL` | Path to your training JSONL manifest |
+    | `DEV_JSONL` | Path to your dev JSONL manifest; set to empty string to skip |
+    | `GPU_IDS` | Comma-separated GPU IDs to use (e.g. `"0,1"`) |
+    | `NUM_GPUS` | Number of GPUs (must match the count in `GPU_IDS`) |
+    | `OUTPUT_DIR` | Directory where checkpoints will be written |
+  </Step>
+
+  <Step title="Run fine-tuning">
+    ```bash
+    bash examples/run_finetune.sh
+    ```
+
+    The script runs two stages:
+
+    **Stage 0 — Tokenize audio:**
+
+    ```bash
+    CUDA_VISIBLE_DEVICES="0,1" \
+        python -m omnivoice.scripts.extract_audio_tokens \
+        --input_jsonl "data/my_data_train.jsonl" \
+        --tar_output_pattern "data/finetune/tokens/train/audios/shard-%06d.tar" \
+        --jsonl_output_pattern "data/finetune/tokens/train/txts/shard-%06d.jsonl" \
+        --tokenizer_path "eustlb/higgs-audio-v2-tokenizer" \
+        --nj_per_gpu 3 \
+        --shuffle True
+    ```
+
+    **Stage 1 — Launch fine-tuning:**
+
+    ```bash
+    accelerate launch \
+        --gpu_ids "0,1" \
+        --num_processes 2 \
+        -m omnivoice.cli.train \
+        --train_config config/train_config_finetune.json \
+        --data_config config/data_config_finetune.json \
+        --output_dir exp/omnivoice_finetune
+    ```
+  </Step>
+</Steps>
+
+## Fine-Tune Config vs. Emilia Config
+
+The fine-tuning training config (`train_config_finetune.json`) differs from the full Emilia training config in three key ways:
+
+| Parameter | Emilia (from scratch) | Fine-tune | Reason |
+|---|---|---|---|
+| `init_from_checkpoint` | `null` | `"k2-fsa/OmniVoice"` | Load pretrained weights rather than initializing randomly |
+| `steps` | `300000` | `5000` | Fewer steps needed; can be tuned based on dataset size and task |
+| `learning_rate` | `1e-4` | `5e-5` | Lower LR preserves pretrained knowledge; can be tuned |
+| `logging_steps` | `100` | `50` | More frequent logging for shorter runs |
+| `eval_steps` | `1000` | `500` | More frequent evaluation checkpoints |
+| `save_steps` | `10000` | `500` | Save more often during short fine-tuning runs |
+
+The full fine-tuning config:
+
+```json
+{
+    "llm_name_or_path": "Qwen/Qwen3-0.6B",
+    "audio_vocab_size": 1025,
+    "audio_mask_id": 1024,
+    "num_audio_codebook": 8,
+
+    "resume_from_checkpoint": null,
+    "init_from_checkpoint": "k2-fsa/OmniVoice",
+
+    "learning_rate": 5e-5,
+    "weight_decay": 0.01,
+    "steps": 5000,
+    "seed": 42,
+    "warmup_type": "ratio",
+    "warmup_ratio": 0.01,
+
+    "batch_tokens": 8192,
+    "gradient_accumulation_steps": 1,
+    "num_workers": 2,
+
+    "mixed_precision": "bf16",
+    "allow_tf32": true,
+
+    "logging_steps": 50,
+    "eval_steps": 500,
+    "save_steps": 500,
+    "keep_last_n_checkpoints": -1
+}
+```
+
+The corresponding data config (`data_config_finetune.json`) is minimal — no `language_id` is required:
+
+```json
+{
+    "train": [
+        {
+            "manifest_path": ["data/finetune/tokens/train/data.lst"]
+        }
+    ],
+    "dev": [
+        {
+            "manifest_path": ["data/finetune/tokens/dev/data.lst"]
+        }
+    ]
+}
+```
+
+## Using a Different Pretrained Checkpoint
+
+To initialize from a checkpoint other than `k2-fsa/OmniVoice` — for example, a locally trained Emilia checkpoint — modify `init_from_checkpoint` in `config/train_config_finetune.json`:
+
+```json
+{
+    "init_from_checkpoint": "exp/omnivoice_emilia/checkpoint-300000"
+}
+```
+
+<Warning>
+  `init_from_checkpoint` resets the optimizer state and step count. If you want to **continue** an interrupted fine-tuning run instead, use `resume_from_checkpoint` pointing to the interrupted checkpoint directory.
+</Warning>

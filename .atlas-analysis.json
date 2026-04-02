@@ -1,0 +1,92 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "OmniVoice",
+  "projectDescription": "A zero-shot multilingual TTS model supporting 600+ languages with voice cloning, voice design, and fast diffusion language model inference.",
+  "theme": "palm",
+  "primaryColor": "#6B21A8",
+  "lightColor": "#F3E8FF",
+  "darkColor": "#3B0764",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Generation Modes",
+            "pages": [
+              "guides/voice-cloning",
+              "guides/voice-design",
+              "guides/auto-voice"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/generation-parameters",
+              "reference/python-api",
+              "reference/cli-tools",
+              "reference/languages"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Training & Evaluation",
+        "groups": [
+          {
+            "group": "Data",
+            "pages": [
+              "training/data-preparation",
+              "training/data-preparation-advanced"
+            ]
+          },
+          {
+            "group": "Training",
+            "pages": [
+              "training/training",
+              "training/finetuning"
+            ]
+          },
+          {
+            "group": "Evaluation",
+            "pages": [
+              "training/evaluation"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Zero-shot voice cloning from a short reference audio clip",
+    "Voice design via text attributes (gender, age, pitch, accent, dialect)",
+    "Support for 600+ languages with language-agnostic and language-specified modes",
+    "Diffusion language model architecture with RTF as low as 0.025",
+    "Non-verbal sound synthesis (laughter, sighs, etc.) and pronunciation control",
+    "Batch inference across multiple GPUs for large-scale TTS tasks",
+    "Long-form generation with automatic text chunking and cross-fade",
+    "Fine-tuning support from pretrained checkpoints on custom data"
+  ],
+  "publicApiSurface": [
+    "OmniVoice.from_pretrained(pretrained_model_name_or_path, device_map, dtype)",
+    "OmniVoice.generate(text, ref_audio, ref_text, instruct, language, duration, speed, generation_config)",
+    "OmniVoice.create_voice_clone_prompt(ref_audio, ref_text, preprocess_prompt)",
+    "OmniVoice.transcribe(audio)",
+    "OmniVoice.load_asr_model(model_name)",
+    "OmniVoice.supported_language_ids()",
+    "OmniVoice.supported_language_names()",
+    "OmniVoiceConfig(audio_vocab_size, num_audio_codebook, llm_config)",
+    "OmniVoiceGenerationConfig(num_step, guidance_scale, t_shift, speed, duration, ...)",
+    "omnivoice-infer CLI",
+    "omnivoice-infer-batch CLI",
+    "omnivoice-demo CLI"
+  ]
+}

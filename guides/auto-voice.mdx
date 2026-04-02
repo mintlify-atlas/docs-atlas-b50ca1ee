@@ -1,0 +1,136 @@
+---
+title: "Auto Voice"
+description: "Generate speech without any reference audio or voice instructions — OmniVoice picks a voice automatically."
+---
+
+Auto voice is the simplest generation mode. You provide only the text to synthesise; OmniVoice selects an appropriate voice on its own. There is no `ref_audio`, no `ref_text`, and no `instruct` parameter.
+
+## Basic Example
+
+```python
+from omnivoice import OmniVoice
+import torch
+import torchaudio
+
+model = OmniVoice.from_pretrained(
+    "k2-fsa/OmniVoice",
+    device_map="cuda:0",
+    dtype=torch.float16,
+)
+
+audio = model.generate(text="This is a sentence without any voice prompt.")
+
+torchaudio.save("out.wav", audio[0], 24000)
+```
+
+The returned `audio` is a list of `torch.Tensor` objects with shape `(1, T)` at 24 kHz.
+
+## When to Use Each Mode
+
+| Mode | When to use |
+|------|-------------|
+| **Auto voice** | Prototyping, data augmentation, or cases where any natural-sounding voice is acceptable |
+| **Voice cloning** | You have a target speaker and want to match their voice precisely |
+| **Voice design** | You know what kind of voice you want (gender, age, accent, etc.) but have no audio sample |
+
+<Tip>
+  Auto voice generates a different voice on each run. If you need reproducible output, fix the random seed with `torch.manual_seed(42)` before calling `generate()`.
+</Tip>
+
+## Specifying a Language
+
+By default, OmniVoice infers the language from the input text. You can make this explicit with the `language` parameter, which accepts either a language name or an ISO 639 code. Specifying the language can give a small quality boost:
+
+```python
+audio = model.generate(
+    text="This is a sentence without any voice prompt.",
+    language="English",  # or language="en"
+)
+```
+
+```python
+audio = model.generate(
+    text="这是一个没有任何声音提示的句子。",
+    language="Chinese",  # or language="zh"
+)
+```
+
+<Info>
+  OmniVoice supports 600+ languages. See the [Language support](/reference/languages) page for all valid language names and codes.
+</Info>
+
+## Batch Auto Voice
+
+Pass a list of strings to synthesise multiple utterances in one call. Each item receives an independently sampled voice:
+
+```python
+texts = [
+    "The quick brown fox jumps over the lazy dog.",
+    "She sells seashells by the seashore.",
+    "How much wood would a woodchuck chuck?",
+]
+
+audios = model.generate(text=texts)
+
+for i, audio in enumerate(audios):
+    torchaudio.save(f"out_{i}.wav", audio, 24000)
+```
+
+To apply the same language hint to every item, pass a single string. To vary it per item, pass a list of the same length as `text`:
+
+```python
+audios = model.generate(
+    text=["Hello.", "Bonjour.", "Hola."],
+    language=["English", "French", "Spanish"],
+)
+```
+
+## Long-Form Generation
+
+OmniVoice automatically handles long texts through a chunking mechanism. When the estimated audio duration exceeds `audio_chunk_threshold` seconds (default: 30 s), the text is split into smaller chunks of up to `audio_chunk_duration` seconds (default: 15 s) each. The chunks are generated independently and then cross-faded together into a single seamless output.
+
+```python
+long_text = """
+OmniVoice is a state-of-the-art zero-shot multilingual TTS model supporting
+more than 600 languages. Built on a novel diffusion language model architecture,
+it generates high-quality speech with superior inference speed, supporting
+voice cloning and voice design. The model can handle arbitrarily long texts
+by automatically splitting them at natural sentence boundaries and stitching
+the resulting audio back together with smooth cross-fades.
+"""
+
+audio = model.generate(
+    text=long_text.strip(),
+    audio_chunk_duration=15.0,    # max seconds per chunk
+    audio_chunk_threshold=30.0,   # only chunk if estimated duration > 30s
+)
+
+torchaudio.save("long_out.wav", audio[0], 24000)
+```
+
+<Note>
+  Chunking is transparent — you always receive a single `torch.Tensor` per input text, regardless of whether the text was split internally. Chunk boundaries are smoothed with cross-fading to avoid audible seams.
+</Note>
+
+## Generation Speed and Duration
+
+Two parameters let you control the length of the output independently of the voice:
+
+```python
+# 20% slower than natural speaking rate
+audio = model.generate(
+    text="This is a sentence without any voice prompt.",
+    speed=0.8,
+)
+
+# Fix the output to exactly 5 seconds (overrides speed)
+audio = model.generate(
+    text="This is a sentence without any voice prompt.",
+    duration=5.0,
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `speed` | `float` | `1.0` | Speaking rate multiplier. `> 1.0` faster, `< 1.0` slower. |
+| `duration` | `float` | `None` | Fixed output length in seconds. Overrides `speed` when both are given. |

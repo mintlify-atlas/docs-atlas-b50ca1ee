@@ -1,0 +1,144 @@
+---
+title: "Generation parameters"
+description: "Full reference for all parameters that control how OmniVoice generates speech, including decoding, sampling, duration, and long-form chunking."
+---
+
+Parameters can be passed as keyword arguments directly to `model.generate()`, or packaged into an `OmniVoiceGenerationConfig` dataclass and passed via the `generation_config` argument.
+
+<CodeGroup>
+
+```python Keyword arguments
+audio = model.generate(text="Hello world", num_step=32, guidance_scale=2.0)
+```
+
+```python OmniVoiceGenerationConfig
+from omnivoice import OmniVoiceGenerationConfig
+
+config = OmniVoiceGenerationConfig(num_step=32, guidance_scale=2.0)
+audio = model.generate(text="Hello world", generation_config=config)
+```
+
+</CodeGroup>
+
+<Note>
+When both `generation_config` and keyword arguments are provided, `generation_config` takes precedence and keyword arguments are ignored.
+</Note>
+
+---
+
+## Decoding
+
+These parameters control the core iterative unmasking process.
+
+<ParamField body="num_step" type="int" default="32">
+  Number of iterative unmasking steps. Higher values improve quality but increase generation time. Use `16` for faster inference when quality is less critical.
+</ParamField>
+
+<ParamField body="denoise" type="bool" default="True">
+  Prepend the `<|denoise|>` token to the input. This signals the model to produce cleaner, less noisy speech. Disabling it can occasionally yield more expressive output but may reduce consistency.
+</ParamField>
+
+<ParamField body="guidance_scale" type="float" default="2.0">
+  Classifier-free guidance (CFG) scale. Higher values make the output adhere more strictly to the input text and style, at the cost of reduced diversity. Set to `0` to disable CFG entirely.
+</ParamField>
+
+<ParamField body="t_shift" type="float" default="0.1">
+  Time-step shift for the noise schedule. Smaller values emphasise earlier steps in the decoding process (higher-noise timesteps).
+</ParamField>
+
+---
+
+## Sampling
+
+These parameters control the randomness of token selection at each decoding step.
+
+<ParamField body="position_temperature" type="float" default="5.0">
+  Temperature for mask-position selection. Controls which masked positions are chosen to be unmasked at each step. `0` is greedy (fully deterministic). Higher values increase randomness in position selection.
+</ParamField>
+
+<ParamField body="class_temperature" type="float" default="0.0">
+  Temperature for token sampling at each step. `0` selects the highest-probability token (greedy). Higher values introduce randomness into which audio token is chosen, producing more varied output.
+</ParamField>
+
+<ParamField body="layer_penalty_factor" type="float" default="5.0">
+  Penalty applied to deeper codebook layers during position selection. Encourages lower (earlier) codebook layers to be unmasked before higher layers, preserving the natural codebook hierarchy.
+</ParamField>
+
+---
+
+## Duration and speed
+
+Control the length of generated audio. Both parameters accept a single value applied to all items in a batch, or a per-item list for fine-grained control in batch mode.
+
+**Priority:** `duration` overrides `speed` when both are set.
+
+<ParamField body="duration" type="float or list[float | None]" default="None">
+  Fixed output duration in seconds. When set, the model targets exactly this many seconds of audio regardless of the text length, adjusting the speaking rate accordingly. Overrides `speed` when both are provided.
+
+  ```python
+  # Fixed 10-second clip
+  audio = model.generate(
+      text="Hello, this is a test of duration control",
+      duration=10.0
+  )
+
+  # Per-item durations in a batch
+  audio = model.generate(
+      text=["Short sentence.", "A much longer sentence that needs more time."],
+      duration=[3.0, 12.0]
+  )
+  ```
+</ParamField>
+
+<ParamField body="speed" type="float or list[float | None]" default="None">
+  Speaking speed factor relative to the model's natural duration estimate. Values greater than `1.0` produce shorter, faster audio. Values less than `1.0` produce longer, slower audio. When both `duration` and `speed` are `None`, the model defaults to a speed of `1.0`.
+
+  ```python
+  # 20% faster than estimated
+  audio = model.generate(
+      text="Hello, this is a test of speed control",
+      speed=1.2
+  )
+
+  # Per-item speeds in a batch
+  audio = model.generate(
+      text=["Fast sentence.", "Slow sentence."],
+      speed=[1.3, 0.8]
+  )
+  ```
+</ParamField>
+
+---
+
+## Pre/post processing
+
+<ParamField body="preprocess_prompt" type="bool" default="True">
+  Apply preprocessing to the voice-clone reference audio and text before generation. This includes:
+  - Removing long silences from reference audio
+  - Trimming reference audio longer than 20 seconds at the largest silence gap
+  - Adding terminal punctuation to reference text if absent
+
+  Set to `False` to pass the raw reference audio and text directly to the model.
+</ParamField>
+
+<ParamField body="postprocess_output" type="bool" default="True">
+  Apply post-processing to the generated audio. This includes removing long silences, applying fade-in/out at audio edges, and padding. Set to `False` to receive the raw decoded audio.
+</ParamField>
+
+---
+
+## Long-form generation
+
+When the estimated audio duration for a given text exceeds `audio_chunk_threshold`, OmniVoice automatically splits the text into smaller chunks, generates each chunk independently, and cross-fades them together. These parameters control that chunking behaviour.
+
+<ParamField body="audio_chunk_duration" type="float" default="15.0">
+  Target duration in seconds for each text chunk when chunking is activated. The model splits the input text so that each chunk produces approximately this many seconds of audio.
+</ParamField>
+
+<ParamField body="audio_chunk_threshold" type="float" default="30.0">
+  Estimated audio duration in seconds above which chunking is activated. If the estimated output is shorter than this threshold, the model generates the full audio in a single pass.
+</ParamField>
+
+<Tip>
+  For long-form narration or audiobooks, lower `audio_chunk_duration` (e.g., `10.0`) and `audio_chunk_threshold` (e.g., `20.0`) can improve consistency across the full output.
+</Tip>

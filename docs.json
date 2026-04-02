@@ -1,122 +1,80 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "OmniVoice",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#6B21A8",
+    "light": "#F3E8FF",
+    "dark": "#3B0764"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/k2-fsa/OmniVoice"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/k2-fsa/OmniVoice"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Generation Modes",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "guides/voice-cloning",
+              "guides/voice-design",
+              "guides/auto-voice"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Reference",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "reference/generation-parameters",
+              "reference/python-api",
+              "reference/cli-tools",
+              "reference/languages"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Training & Evaluation",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Data",
             "pages": [
-              "api-reference/introduction"
+              "training/data-preparation",
+              "training/data-preparation-advanced"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Training",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "training/training",
+              "training/finetuning"
+            ]
+          },
+          {
+            "group": "Evaluation",
+            "pages": [
+              "training/evaluation"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

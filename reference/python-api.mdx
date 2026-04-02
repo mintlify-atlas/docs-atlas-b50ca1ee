@@ -1,0 +1,340 @@
+---
+title: "Python API"
+description: "Complete reference for the OmniVoice Python API, including the OmniVoice model class, configuration dataclasses, and all public methods."
+---
+
+The public API is exposed from the `omnivoice` package:
+
+```python
+from omnivoice import OmniVoice, OmniVoiceConfig, OmniVoiceGenerationConfig
+```
+
+---
+
+## OmniVoice
+
+The main model class. Extends `transformers.PreTrainedModel` and follows the standard HuggingFace model interface.
+
+### `OmniVoice.from_pretrained()`
+
+Load a pretrained model from a HuggingFace Hub repository or a local directory.
+
+```python
+model = OmniVoice.from_pretrained(
+    "k2-fsa/OmniVoice",
+    device_map="cuda:0",
+    dtype=torch.float16,
+)
+```
+
+<ParamField path="pretrained_model_name_or_path" type="str" required>
+  HuggingFace Hub model ID (e.g. `"k2-fsa/OmniVoice"`) or a path to a local directory containing the model weights and tokenizer.
+</ParamField>
+
+<ParamField body="device_map" type="str">
+  Device string for model placement. Typical values: `"cuda"`, `"cuda:0"`, `"mps"`, `"cpu"`. Passed through to the underlying HuggingFace `from_pretrained` loader.
+</ParamField>
+
+<ParamField body="dtype" type="torch.dtype">
+  Weight precision. Use `torch.float16` for GPU inference (recommended). Use `torch.float32` for CPU or Apple Silicon.
+</ParamField>
+
+<ParamField body="train" type="bool" default="False">
+  When `True`, skips loading the audio tokenizer, text tokenizer, and duration estimator. Use this flag when loading the model for training or fine-tuning.
+</ParamField>
+
+<ParamField body="load_asr" type="bool" default="False">
+  When `True`, also loads a Whisper ASR model at startup (see `load_asr_model()`). Useful when you intend to call `generate()` with `ref_audio` but no `ref_text`, since the ASR model will be used to auto-transcribe the reference.
+</ParamField>
+
+<ParamField body="asr_model_name" type="str" default='"openai/whisper-large-v3-turbo"'>
+  HuggingFace model ID for the Whisper ASR model loaded when `load_asr=True`.
+</ParamField>
+
+**Returns:** `OmniVoice`
+
+---
+
+### `model.generate()`
+
+Generate speech audio from text. Supports three modes:
+
+- **Voice clone** — clone the speaker style from reference audio
+- **Voice design** — specify speaker attributes via a text description
+- **Auto voice** — let the model choose a voice automatically
+
+```python
+# Voice cloning
+audio = model.generate(
+    text="Hello, this is a test of zero-shot voice cloning.",
+    ref_audio="ref.wav",
+    ref_text="Transcription of the reference audio.",
+)
+
+# Voice design
+audio = model.generate(
+    text="Hello, this is a test of voice design.",
+    instruct="female, low pitch, british accent",
+)
+
+# Auto voice
+audio = model.generate(text="This is a sentence without any voice prompt.")
+
+torchaudio.save("out.wav", audio[0], 24000)
+```
+
+<ParamField body="text" type="str or list[str]" required>
+  Text to synthesize. Pass a single string for single-item generation or a list of strings for batch generation.
+</ParamField>
+
+<ParamField body="language" type="str or list[str] or None" default="None">
+  Language name (e.g. `"English"`, `"French"`) or ISO 639-3 code (e.g. `"en"`, `"fr"`). Pass `None` for language-agnostic mode. Performance is slightly better when the language is explicitly specified. See [Language support](/reference/languages) for the full list.
+</ParamField>
+
+<ParamField body="ref_text" type="str or list[str] or None" default="None">
+  Transcript of the reference audio for voice cloning mode. If omitted and `ref_audio` is provided, the model will auto-transcribe the reference using Whisper ASR (requires `load_asr_model()` to have been called, or the model will load it on the fly).
+</ParamField>
+
+<ParamField body="ref_audio" type="str or tuple[torch.Tensor, int] or list or None" default="None">
+  Reference audio for voice cloning mode. Accepts:
+  - A file path string (e.g. `"ref.wav"`)
+  - A `(waveform, sample_rate)` tuple where `waveform` is a `torch.Tensor`
+  - A list of either of the above for batch generation
+
+  Ignored if `voice_clone_prompt` is also provided.
+</ParamField>
+
+<ParamField body="voice_clone_prompt" type="VoiceClonePrompt or list[VoiceClonePrompt] or None" default="None">
+  A pre-computed `VoiceClonePrompt` from `create_voice_clone_prompt()`. Use this to avoid re-processing the same reference audio on repeated calls. When provided, `ref_text` and `ref_audio` are ignored.
+</ParamField>
+
+<ParamField body="instruct" type="str or list[str] or None" default="None">
+  Style instruction for voice design mode. Comma-separated speaker attributes, e.g. `"male, young adult, american accent"`. See [Voice Design](/guides/voice-design) for the full attribute list.
+</ParamField>
+
+<ParamField body="duration" type="float or list[float | None] or None" default="None">
+  Fixed output duration in seconds. See [Generation parameters — Duration & speed](/reference/generation-parameters#duration-and-speed).
+</ParamField>
+
+<ParamField body="speed" type="float or list[float | None] or None" default="None">
+  Speaking speed factor. See [Generation parameters — Duration & speed](/reference/generation-parameters#duration-and-speed).
+</ParamField>
+
+<ParamField body="generation_config" type="OmniVoiceGenerationConfig or None" default="None">
+  Explicit generation config object. When provided, takes precedence over any generation-config fields passed as `**kwargs`.
+</ParamField>
+
+<ParamField body="**kwargs" type="any">
+  Any field from `OmniVoiceGenerationConfig` can be passed as a keyword argument (e.g. `num_step=16`, `guidance_scale=3.0`). Ignored when `generation_config` is provided. See [Generation parameters](/reference/generation-parameters) for the full list.
+</ParamField>
+
+**Returns:** `list[torch.Tensor]` — a list of 2-D tensors, one per input text, with shape `(1, T)` at 24000 Hz.
+
+---
+
+### `model.create_voice_clone_prompt()`
+
+Pre-compute a reusable voice clone prompt from reference audio. Useful when generating multiple utterances from the same speaker, since the reference audio only needs to be processed once.
+
+```python
+prompt = model.create_voice_clone_prompt(
+    ref_audio="ref.wav",
+    ref_text="Transcription of the reference audio.",
+)
+
+for text in ["Hello.", "How are you?", "Goodbye."]:
+    audio = model.generate(text=text, voice_clone_prompt=prompt)
+```
+
+<ParamField body="ref_audio" type="str or tuple[torch.Tensor, int]" required>
+  Reference audio. A file path string, or a `(waveform, sample_rate)` tuple where `waveform` is a 1-D or 2-D (channels × samples) `torch.Tensor`. Multi-channel audio is mixed to mono automatically.
+</ParamField>
+
+<ParamField body="ref_text" type="str or None" default="None">
+  Transcript of the reference audio. If `None`, the loaded ASR model is used to auto-transcribe (calls `load_asr_model()` automatically if not yet loaded).
+</ParamField>
+
+<ParamField body="preprocess_prompt" type="bool" default="True">
+  When `True`, applies silence removal, optional trimming (for audio longer than 20 s when `ref_text` is not provided), and adds terminal punctuation to `ref_text`. Set to `False` to use the raw audio and text.
+</ParamField>
+
+**Returns:** `VoiceClonePrompt`
+
+---
+
+### `model.load_asr_model()`
+
+Load a Whisper ASR model used to auto-transcribe reference audio when `ref_text` is not provided.
+
+```python
+model.load_asr_model(model_name="openai/whisper-large-v3-turbo")
+```
+
+<ParamField body="model_name" type="str" default='"openai/whisper-large-v3-turbo"'>
+  HuggingFace model ID for the Whisper ASR model. The model is loaded onto the same device as the OmniVoice model, using `float16` on CUDA and `float32` elsewhere.
+</ParamField>
+
+<Note>
+  You do not need to call this manually before `generate()`. If `ref_audio` is provided without `ref_text`, the ASR model is loaded automatically on the first call.
+</Note>
+
+---
+
+### `model.transcribe()`
+
+Transcribe audio using the loaded Whisper ASR model. Requires `load_asr_model()` to have been called first (or `load_asr=True` at `from_pretrained` time).
+
+```python
+# From a file path
+text = model.transcribe("ref.wav")
+
+# From a waveform tensor
+waveform, sr = torchaudio.load("ref.wav")
+text = model.transcribe((waveform, sr))
+```
+
+<ParamField body="audio" type="str or tuple[torch.Tensor, int]" required>
+  Audio to transcribe. Accepts:
+  - A file path string
+  - A `(waveform, sample_rate)` tuple where `waveform` is a `torch.Tensor`. Multi-channel audio is mixed to mono automatically.
+</ParamField>
+
+**Returns:** `str` — the transcribed text, stripped of leading/trailing whitespace.
+
+---
+
+### `model.supported_language_ids()`
+
+Return the set of supported ISO 639-3 language codes.
+
+```python
+ids = model.supported_language_ids()
+# e.g. {"en", "zh", "fr", "de", "ja", ...}
+```
+
+**Returns:** `set[str]`
+
+---
+
+### `model.supported_language_names()`
+
+Return the set of supported lowercase language names.
+
+```python
+names = model.supported_language_names()
+# e.g. {"english", "chinese", "french", "german", "japanese", ...}
+```
+
+**Returns:** `set[str]`
+
+---
+
+## OmniVoiceConfig
+
+Configuration class for the OmniVoice model architecture. Passed to `OmniVoice.__init__()` and serialized alongside model weights.
+
+<ResponseField name="audio_vocab_size" type="int" default="1025">
+  Size of the audio token vocabulary per codebook layer. The extra token (index 1024) is used as the mask token.
+</ResponseField>
+
+<ResponseField name="audio_mask_id" type="int" default="1024">
+  Token ID used as the mask token during iterative decoding. Must be `audio_vocab_size - 1`.
+</ResponseField>
+
+<ResponseField name="num_audio_codebook" type="int" default="8">
+  Number of residual vector quantization (RVQ) codebook layers used by the audio tokenizer.
+</ResponseField>
+
+<ResponseField name="audio_codebook_weights" type="list[float]" default="[8, 8, 6, 6, 4, 4, 2, 2]">
+  Per-layer loss weights used during training. Lower (earlier) layers receive higher weights because they carry more acoustic information. Must have `num_audio_codebook` entries.
+</ResponseField>
+
+<ResponseField name="llm_config" type="PretrainedConfig">
+  Configuration for the underlying language model backbone (e.g. a Qwen or LLaMA config). Passed through HuggingFace's `AutoConfig` registry.
+</ResponseField>
+
+---
+
+## OmniVoiceGenerationConfig
+
+Dataclass controlling all generation-time behaviour. All fields have defaults, so you only need to specify fields you want to override.
+
+```python
+from omnivoice import OmniVoiceGenerationConfig
+
+config = OmniVoiceGenerationConfig(
+    num_step=16,          # faster inference
+    guidance_scale=2.5,
+)
+# speed and duration are passed directly to generate(), not via OmniVoiceGenerationConfig
+audio = model.generate(text="Hello world", generation_config=config, speed=1.1)
+```
+
+<ResponseField name="num_step" type="int" default="32">
+  Number of iterative unmasking steps.
+</ResponseField>
+
+<ResponseField name="guidance_scale" type="float" default="2.0">
+  Classifier-free guidance scale.
+</ResponseField>
+
+<ResponseField name="t_shift" type="float" default="0.1">
+  Time-step shift for the noise schedule.
+</ResponseField>
+
+<ResponseField name="layer_penalty_factor" type="float" default="5.0">
+  Penalty applied to deeper codebook layers during position selection.
+</ResponseField>
+
+<ResponseField name="position_temperature" type="float" default="5.0">
+  Temperature for mask-position selection. `0` = greedy.
+</ResponseField>
+
+<ResponseField name="class_temperature" type="float" default="0.0">
+  Temperature for token sampling. `0` = greedy.
+</ResponseField>
+
+<ResponseField name="denoise" type="bool" default="True">
+  Whether to prepend the `<|denoise|>` token.
+</ResponseField>
+
+<ResponseField name="preprocess_prompt" type="bool" default="True">
+  Whether to apply preprocessing to reference audio and text.
+</ResponseField>
+
+<ResponseField name="postprocess_output" type="bool" default="True">
+  Whether to apply post-processing to generated audio.
+</ResponseField>
+
+<ResponseField name="audio_chunk_duration" type="float" default="15.0">
+  Target chunk duration in seconds for long-form generation.
+</ResponseField>
+
+<ResponseField name="audio_chunk_threshold" type="float" default="30.0">
+  Estimated duration threshold above which chunking is activated.
+</ResponseField>
+
+See [Generation parameters](/reference/generation-parameters) for detailed descriptions of each field.
+
+---
+
+## VoiceClonePrompt
+
+Dataclass returned by `model.create_voice_clone_prompt()`. Encapsulates all preprocessed reference data needed for voice cloning, allowing it to be reused across multiple `generate()` calls without reprocessing the reference audio.
+
+```python
+prompt = model.create_voice_clone_prompt("ref.wav", ref_text="Hello world.")
+audio = model.generate(text="Generating with a cached prompt.", voice_clone_prompt=prompt)
+```
+
+<ResponseField name="ref_audio_tokens" type="torch.Tensor">
+  Encoded audio tokens from the reference waveform. Shape: `(C, T)` where `C` is the number of codebook layers (typically 8) and `T` is the number of audio frames.
+</ResponseField>
+
+<ResponseField name="ref_text" type="str">
+  Transcript of the reference audio. May have been auto-transcribed by Whisper and/or had terminal punctuation added by the preprocessor.
+</ResponseField>
+
+<ResponseField name="ref_rms" type="float">
+  Root-mean-square amplitude of the reference waveform before preprocessing. Used to normalize the volume of generated audio to match the reference speaker's level.
+</ResponseField>

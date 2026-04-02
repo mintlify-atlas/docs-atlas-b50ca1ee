@@ -1,0 +1,239 @@
+---
+title: "Training"
+description: "Train OmniVoice from scratch on large-scale datasets using multi-GPU accelerate training."
+---
+
+All OmniVoice training is driven by two JSON config files: a **training config** (model and optimizer settings) and a **data config** (dataset manifests). Ready-to-use configs for the Emilia dataset are in `examples/config/`.
+
+## Training Config
+
+Key fields in the training config (`train_config_emilia.json`):
+
+```json
+{
+    "llm_name_or_path": "Qwen/Qwen3-0.6B",
+    "audio_vocab_size": 1025,
+    "audio_mask_id": 1024,
+    "num_audio_codebook": 8,
+
+    "audio_codebook_weights": [8, 8, 6, 6, 4, 4, 2, 2],
+    "drop_cond_ratio": 0.1,
+    "prompt_ratio_range": [0.0, 0.3],
+    "mask_ratio_range": [0.0, 1.0],
+    "language_ratio": 0.0,
+
+    "resume_from_checkpoint": null,
+    "init_from_checkpoint": null,
+
+    "learning_rate": 1e-4,
+    "weight_decay": 0.01,
+    "max_grad_norm": 1.0,
+    "steps": 300000,
+    "seed": 42,
+    "warmup_type": "ratio",
+    "warmup_ratio": 0.03,
+
+    "batch_tokens": 8192,
+    "gradient_accumulation_steps": 1,
+    "num_workers": 4,
+
+    "mixed_precision": "bf16",
+    "allow_tf32": true,
+
+    "logging_steps": 100,
+    "eval_steps": 1000,
+    "save_steps": 10000,
+    "keep_last_n_checkpoints": -1
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `llm_name_or_path` | `Qwen/Qwen3-0.6B` | Local LLM path or HuggingFace model ID |
+| `steps` | `300000` | Total training steps |
+| `learning_rate` | `1e-4` | Peak learning rate |
+| `batch_tokens` | `8192` | Tokens per batch on each GPU |
+| `resume_from_checkpoint` | `null` | Path to an existing checkpoint to resume training |
+| `init_from_checkpoint` | `null` | Path to a pretrained checkpoint to initialize weights from (for fine-tuning) |
+| `warmup_ratio` | `0.03` | Fraction of total steps used for learning rate warmup |
+| `save_steps` | `10000` | Save a checkpoint every N steps |
+| `eval_steps` | `1000` | Run evaluation every N steps |
+| `keep_last_n_checkpoints` | `-1` | Number of recent checkpoints to retain; `-1` keeps all |
+
+<Note>
+  `output_dir` and `data_config` are passed via the command line, not in the training config JSON.
+</Note>
+
+## Launching Multi-GPU Training
+
+Use `accelerate launch` to start training across multiple GPUs:
+
+```bash
+accelerate launch \
+    --gpu_ids "0,1,2,3,4,5,6,7" \
+    --num_processes 8 \
+    -m omnivoice.cli.train \
+    --train_config config/train_config_emilia.json \
+    --data_config config/data_config_emilia.json \
+    --output_dir exp/omnivoice_emilia
+```
+
+Adjust `--gpu_ids` and `--num_processes` to match the number of GPUs on your machine.
+
+## Resuming Training
+
+To resume from an existing checkpoint, set `resume_from_checkpoint` in your training config:
+
+```json
+{
+    "resume_from_checkpoint": "exp/omnivoice_emilia/checkpoint-100000"
+}
+```
+
+The optimizer state, scheduler state, and model weights are all restored automatically.
+
+## Initializing from a Pretrained Checkpoint
+
+To start training with weights initialized from a pretrained OmniVoice checkpoint (useful for fine-tuning or domain adaptation), set `init_from_checkpoint`:
+
+```json
+{
+    "init_from_checkpoint": "exp/omnivoice/checkpoint-100000"
+}
+```
+
+<Note>
+  Unlike `resume_from_checkpoint`, `init_from_checkpoint` only loads **model weights** — optimizer state and step count are reset. Use this when adapting a pretrained model to new data rather than continuing an interrupted run.
+</Note>
+
+## Monitoring with TensorBoard
+
+Training metrics are logged to TensorBoard automatically:
+
+```bash
+tensorboard --logdir exp/omnivoice_emilia/tensorboard
+```
+
+## Full Emilia Pipeline
+
+`examples/run_emilia.sh` runs the complete training pipeline on the Emilia dataset across three stages:
+
+| Stage | Description |
+|---|---|
+| 0 | Verify that the Emilia dataset and JSONL manifests are in place |
+| 1 | Tokenize all splits into WebDataset shards |
+| 2 | Launch multi-GPU training with `accelerate` |
+
+### Prerequisites
+
+<Steps>
+  <Step title="Download the Emilia dataset">
+    Download from [OpenXLab](https://openxlab.org.cn/datasets/Amphion/Emilia) (or the HuggingFace mirror) and place it under `download/`:
+
+    ```
+    download/Amphion___Emilia
+    └── raw
+        ├── EN
+        └── ZH
+    ```
+  </Step>
+
+  <Step title="Obtain JSONL manifests">
+    Place the following files under `data/emilia/manifests/`:
+
+    - `emilia_en_train.jsonl`
+    - `emilia_en_dev.jsonl`
+    - `emilia_zh_train.jsonl`
+    - `emilia_zh_dev.jsonl`
+
+    You can generate these from the raw metadata, or download pre-processed manifests from the [`zhu-han/Emilia-Manifests`](https://huggingface.co/datasets/zhu-han/Emilia-Manifests) HuggingFace dataset.
+  </Step>
+</Steps>
+
+### Running the Pipeline
+
+<Steps>
+  <Step title="Run all stages at once">
+    ```bash
+    bash examples/run_emilia.sh
+    ```
+  </Step>
+
+  <Step title="Or run individual stages">
+    Edit the `stage` and `stop_stage` variables at the top of the script. For example, to only run tokenization:
+
+    ```bash
+    # Inside run_emilia.sh, set:
+    stage=1
+    stop_stage=1
+    ```
+
+    Then run `bash examples/run_emilia.sh`.
+  </Step>
+</Steps>
+
+### What `run_emilia.sh` Does
+
+**Stage 0 — Verify data:**
+
+```bash
+# Checks for the presence of all four manifests:
+#   data/emilia/manifests/emilia_en_train.jsonl
+#   data/emilia/manifests/emilia_en_dev.jsonl
+#   data/emilia/manifests/emilia_zh_train.jsonl
+#   data/emilia/manifests/emilia_zh_dev.jsonl
+```
+
+**Stage 1 — Tokenize all splits:**
+
+```bash
+for split in emilia_en_dev emilia_zh_dev emilia_en_train emilia_zh_train; do
+    CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7" \
+        python -m omnivoice.scripts.extract_audio_tokens \
+        --input_jsonl "data/emilia/manifests/${split}.jsonl" \
+        --tar_output_pattern "data/emilia/tokens/${split}/audios/shard-%06d.tar" \
+        --jsonl_output_pattern "data/emilia/tokens/${split}/txts/shard-%06d.jsonl" \
+        --tokenizer_path "eustlb/higgs-audio-v2-tokenizer" \
+        --nj_per_gpu 3 \
+        --shuffle True
+done
+```
+
+**Stage 2 — Launch training:**
+
+```bash
+accelerate launch \
+    --gpu_ids "0,1,2,3,4,5,6,7" \
+    --num_processes 8 \
+    -m omnivoice.cli.train \
+    --train_config config/train_config_emilia.json \
+    --data_config config/data_config_emilia.json \
+    --output_dir exp/omnivoice_emilia
+```
+
+The Emilia data config (`data_config_emilia.json`) references all four tokenized splits:
+
+```json
+{
+    "train": [
+        {
+            "language_id": "en",
+            "manifest_path": ["data/emilia/tokens/emilia_en_train/data.lst"]
+        },
+        {
+            "language_id": "zh",
+            "manifest_path": ["data/emilia/tokens/emilia_zh_train/data.lst"]
+        }
+    ],
+    "dev": [
+        {
+            "language_id": "en",
+            "manifest_path": ["data/emilia/tokens/emilia_en_dev/data.lst"]
+        },
+        {
+            "language_id": "zh",
+            "manifest_path": ["data/emilia/tokens/emilia_zh_dev/data.lst"]
+        }
+    ]
+}
+```

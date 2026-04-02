@@ -1,0 +1,139 @@
+---
+title: "Advanced Data Preparation"
+description: "Denoise audio and apply noise augmentation during tokenization for more robust OmniVoice training."
+---
+
+The advanced pipeline adds **denoising** and **prompt noise augmentation** on top of the basic tokenization workflow. Both stages are optional and can be combined or used independently.
+
+```
+Step 1 (optional): Denoise
+  Raw audio → Sidon denoiser → clean audio
+
+Step 2: Tokenize (with optional noise augmentation)
+  Clean audio + noise augment on prefix → audio tokenizer → tokens
+```
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Denoising" icon="wand-magic-sparkles">
+    Sidon model checkpoints (`feature_extractor_cuda.pt`, `decoder_cuda.pt`) from the [`sarulab-speech/sidon-v0.1`](https://huggingface.co/sarulab-speech/sidon-v0.1/tree/main) HuggingFace repository.
+  </Card>
+  <Card title="Noise Augmentation" icon="volume-high">
+    Noise recordings and room impulse responses (RIR) pre-packed into WebDataset tar shards, each with their own `data.lst` manifest.
+  </Card>
+</CardGroup>
+
+## Step 1: Denoise Audio
+
+Use the [Sidon](https://github.com/sarulab-speech/Sidon) speech enhancement model to remove background noise from raw audio before tokenization.
+
+```bash
+export CUDA_VISIBLE_DEVICES="0,1,2,3"
+python -m omnivoice.scripts.denoise_audio \
+    --input_jsonl data.jsonl \
+    --tar_output_pattern data/denoised/audios/shard-%06d.tar \
+    --jsonl_output_pattern data/denoised/txts/shard-%06d.jsonl \
+    --feature_extractor_path /path/to/sidon_feature_extractor_cuda.pt \
+    --decoder_path /path/to/sidon_decoder_cuda.pt \
+    --target_sample_rate 24000 \
+    --batch_duration 200.0
+```
+
+The script will:
+1. Read your JSONL manifest
+2. Run the Sidon denoiser on each audio file
+3. Output denoised audio as WebDataset tar/JSONL shards
+4. Generate a `data.lst` manifest in `data/denoised/`
+
+<Tip>
+  You can also pass `--input_manifest /path/to/data.lst` if your data is already in the custom WebDataset format rather than a flat JSONL file.
+</Tip>
+
+## Step 2: Tokenize with Noise Augmentation
+
+After denoising, run tokenization with optional noise augmentation. This adds environmental noise and room reverb to the **prompt audio** during tokenization, making the model robust to noisy reference audio at inference time.
+
+<Note>
+  Noise augmentation is applied to only a small proportion of training samples. This ensures the model can still generate high-quality audio from clean reference prompts — the augmented samples teach robustness without degrading clean-audio performance.
+</Note>
+
+You need two additional datasets in WebDataset format:
+
+- **Noise recordings**: environmental noise tar shards with a `data.lst` manifest
+- **Room impulse responses (RIR)**: RIR tar shards with a `data.lst` manifest
+
+```bash
+export CUDA_VISIBLE_DEVICES="0,1,2,4"
+python -m omnivoice.scripts.extract_audio_tokens_add_noise \
+    --input_jsonl data.jsonl \
+    --tar_output_pattern data/tokens/shard-%06d.tar \
+    --jsonl_output_pattern data/txts/shard-%06d.jsonl \
+    --tokenizer_path eustlb/higgs-audio-v2-tokenizer \
+    --noise_manifest data/noise_shards/data.lst \
+    --rir_manifest data/rir_shards/data.lst \
+    --nj_per_gpu 3
+```
+
+<Tip>
+  You can pass `--input_manifest /path/to/data.lst` here as well, if you want to start from a pre-existing WebDataset rather than a flat JSONL file — for example, when chaining denoising output directly into the noise-augmented tokenization step.
+</Tip>
+
+## Full Advanced Pipeline
+
+Combining both steps into a complete pipeline:
+
+<Steps>
+  <Step title="Denoise raw audio">
+    ```bash
+    export CUDA_VISIBLE_DEVICES="0,1,2,3"
+    python -m omnivoice.scripts.denoise_audio \
+        --input_jsonl data.jsonl \
+        --tar_output_pattern data/denoised/audios/shard-%06d.tar \
+        --jsonl_output_pattern data/denoised/txts/shard-%06d.jsonl \
+        --feature_extractor_path /path/to/sidon_feature_extractor_cuda.pt \
+        --decoder_path /path/to/sidon_decoder_cuda.pt \
+        --target_sample_rate 24000 \
+        --batch_duration 200.0
+    ```
+  </Step>
+
+  <Step title="Tokenize denoised audio with noise augmentation">
+    Pass the denoised `data.lst` manifest as `--input_manifest`:
+
+    ```bash
+    export CUDA_VISIBLE_DEVICES="0,1,2,4"
+    python -m omnivoice.scripts.extract_audio_tokens_add_noise \
+        --input_manifest data/denoised/data.lst \
+        --tar_output_pattern data/tokens/shard-%06d.tar \
+        --jsonl_output_pattern data/txts/shard-%06d.jsonl \
+        --tokenizer_path eustlb/higgs-audio-v2-tokenizer \
+        --noise_manifest data/noise_shards/data.lst \
+        --rir_manifest data/rir_shards/data.lst \
+        --nj_per_gpu 3
+    ```
+  </Step>
+
+  <Step title="Reference the output in your data config">
+    Point your training data config at the final `data.lst`:
+
+    ```json
+    {
+        "train": [
+            {
+                "language_id": "en",
+                "manifest_path": ["data/tokens/data.lst"],
+                "repeat": 1
+            }
+        ],
+        "dev": [
+            {
+                "language_id": "en",
+                "manifest_path": ["data/tokens/dev/data.lst"],
+                "repeat": 1
+            }
+        ]
+    }
+    ```
+  </Step>
+</Steps>

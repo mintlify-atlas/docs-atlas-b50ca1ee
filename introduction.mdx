@@ -1,0 +1,52 @@
+---
+title: Introduction
+description: OmniVoice is a state-of-the-art zero-shot multilingual TTS model supporting more than 600 languages, built on a diffusion language model architecture.
+---
+
+OmniVoice is a zero-shot multilingual text-to-speech model that generates high-quality speech from text alone — no fine-tuning required. It supports over 600 languages, delivers fast inference, and gives you full control over the output voice through either voice cloning or voice design.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="600+ Languages" icon="globe">
+    The broadest language coverage among zero-shot TTS models, spanning major world languages, regional dialects, and low-resource languages.
+  </Card>
+  <Card title="Voice Cloning" icon="microphone">
+    Clone any voice from a short reference audio clip. Optionally provide a transcript, or let Whisper ASR transcribe it automatically.
+  </Card>
+  <Card title="Voice Design" icon="sliders">
+    Describe a voice using natural attributes — gender, age, pitch, accent, dialect, whisper style — without any reference audio.
+  </Card>
+  <Card title="Fast Inference" icon="bolt">
+    RTF as low as 0.025, meaning OmniVoice synthesizes speech up to 40x faster than real-time on supported hardware.
+  </Card>
+</CardGroup>
+
+## Architecture Overview
+
+OmniVoice is built on a **diffusion language model** architecture — a clean, streamlined, and scalable design that combines the strengths of diffusion models (high output quality, controllable generation) with the efficiency of language model decoding.
+
+The model is distributed via HuggingFace as `k2-fsa/OmniVoice` and loaded using the `OmniVoice.from_pretrained()` API. It outputs audio as a list of `torch.Tensor` with shape `(1, T)` at **24 kHz**.
+
+Three generation modes are supported:
+
+- **Voice Cloning** — provide `ref_audio` (and optionally `ref_text`) to clone a speaker's voice
+- **Voice Design** — provide an `instruct` string describing the desired speaker attributes
+- **Auto Voice** — omit all prompts and let the model pick a voice automatically
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install OmniVoice via pip or uv, with PyTorch setup for NVIDIA GPU, Apple Silicon, or CPU.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Load the model and synthesize speech in minutes with working code examples.
+  </Card>
+  <Card title="Voice Cloning" icon="clone" href="/guides/voice-cloning">
+    Clone a voice from a reference audio clip using the Python API or CLI.
+  </Card>
+  <Card title="Voice Design" icon="paintbrush" href="/guides/voice-design">
+    Control speaker attributes like gender, pitch, accent, and dialect via instruct strings.
+  </Card>
+</CardGroup>

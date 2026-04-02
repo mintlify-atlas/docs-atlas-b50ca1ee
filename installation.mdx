@@ -1,0 +1,126 @@
+---
+title: Installation
+description: Install OmniVoice via pip or uv on NVIDIA GPU, Apple Silicon, or CPU. Requires Python 3.10+ and PyTorch 2.8.
+---
+
+OmniVoice requires **Python 3.10+** and **PyTorch 2.8**. Choose either the pip or uv installation method below.
+
+<Tip>
+  Use a fresh virtual environment (e.g. `conda create -n omnivoice python=3.10` or `python -m venv .venv`) to avoid dependency conflicts.
+</Tip>
+
+## pip
+
+<Steps>
+  <Step title="Install PyTorch 2.8">
+    Install PyTorch with the backend matching your hardware.
+
+    <CodeGroup>
+      ```bash NVIDIA GPU
+      # Install PyTorch with your CUDA version, e.g. CUDA 12.8:
+      pip install torch==2.8.0+cu128 torchaudio==2.8.0+cu128 \
+          --extra-index-url https://download.pytorch.org/whl/cu128
+      ```
+
+      ```bash Apple Silicon
+      # PyTorch ships with MPS support on macOS out of the box:
+      pip install torch==2.8.0 torchaudio==2.8.0
+      ```
+
+      ```bash CPU only
+      # Suitable for testing on machines without a GPU:
+      pip install torch==2.8.0 torchaudio==2.8.0
+      ```
+    </CodeGroup>
+
+    <Note>
+      For other CUDA versions, see the [PyTorch official installation guide](https://pytorch.org/get-started/locally/).
+    </Note>
+  </Step>
+
+  <Step title="Install OmniVoice">
+    Pick one of the three install variants depending on your use case.
+
+    <CodeGroup>
+      ```bash PyPI stable
+      # Recommended for most users
+      pip install omnivoice
+      ```
+
+      ```bash GitHub latest
+      # Latest source from GitHub — no need to clone first
+      pip install git+https://github.com/k2-fsa/OmniVoice.git
+      ```
+
+      ```bash Editable dev
+      # For development or contributing
+      git clone https://github.com/k2-fsa/OmniVoice.git
+      cd OmniVoice
+      pip install -e .
+      ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## uv
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/k2-fsa/OmniVoice.git
+    cd OmniVoice
+    ```
+  </Step>
+
+  <Step title="Sync dependencies">
+    ```bash
+    uv sync
+    ```
+
+    On Linux and Windows, `uv` will automatically install PyTorch with CUDA 12.8 support via the configured `pytorch-cuda` index in `pyproject.toml`. On macOS, the standard PyPI build is used.
+
+    <Tip>
+      If you are on a slow connection or using a mirror for PyPI, you can pass a custom index:
+
+      ```bash
+      uv sync --default-index "https://mirrors.aliyun.com/pypi/simple"
+      ```
+    </Tip>
+  </Step>
+</Steps>
+
+## Verifying the installation
+
+```python
+import omnivoice
+print(omnivoice.__version__)
+```
+
+## HuggingFace mirror (China users)
+
+If you are in a region with limited connectivity to HuggingFace, set the `HF_ENDPOINT` environment variable before running any OmniVoice command or Python script:
+
+```bash
+export HF_ENDPOINT="https://hf-mirror.com"
+```
+
+This applies to both model downloads triggered by `OmniVoice.from_pretrained()` and the web demo.
+
+## Dependencies
+
+The following packages are installed automatically:
+
+| Package | Version |
+|---|---|
+| `torch` | 2.8.x |
+| `torchaudio` | 2.8.x |
+| `transformers` | 5.3.0 |
+| `accelerate` | latest |
+| `gradio` | latest |
+| `pydub` | latest |
+| `soundfile` | latest |
+| `numpy` | latest |
+
+<Note>
+  Optional evaluation dependencies (`jiwer`, `librosa`, `s3prl`, `funasr`, etc.) are not installed by default. Install them with `pip install omnivoice[eval]` if you need to run evaluations.
+</Note>

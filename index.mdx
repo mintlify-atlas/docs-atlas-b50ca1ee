@@ -1,97 +1,112 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "OmniVoice"
+description: "High-quality zero-shot TTS with voice cloning and voice design for 600+ languages."
 ---
 
-## Setting up
+OmniVoice is a state-of-the-art zero-shot multilingual text-to-speech model built on a diffusion language model architecture. It supports over 600 languages, delivers real-time-factor as low as 0.025, and lets you clone voices or design entirely new ones without any fine-tuning.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install OmniVoice via pip or uv and get your environment ready.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Generate your first speech sample in minutes.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Voice Cloning" icon="microphone" href="/guides/voice-cloning">
+    Clone any voice from a short reference audio clip.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Voice Design" icon="sliders" href="/guides/voice-design">
+    Describe a voice with text attributes — no audio needed.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Key features
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="600+ Languages" icon="globe">
+    The broadest language coverage among zero-shot TTS models, including major world languages and regional dialects.
+  </Card>
+  <Card title="Fast inference" icon="bolt">
+    RTF as low as 0.025 — up to 40× faster than real-time on GPU hardware.
+  </Card>
+  <Card title="Voice cloning" icon="clone">
+    State-of-the-art voice cloning quality from a short reference recording, with optional Whisper auto-transcription.
+  </Card>
+  <Card title="Voice design" icon="paintbrush">
+    Control gender, age, pitch, speaking style, English accent, and Chinese dialect via a simple attribute string.
+  </Card>
+  <Card title="Non-verbal sounds" icon="face-laugh">
+    Insert expressive non-verbal symbols like `[laughter]` or `[sigh]` directly in the input text.
+  </Card>
+  <Card title="Batch inference" icon="server">
+    Distribute large-scale TTS jobs across multiple GPUs with the built-in batch inference CLI.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Get started
 
-## Need inspiration?
+<Steps>
+  <Step title="Install OmniVoice">
+    Install via pip with PyTorch for your platform:
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    ```bash
+    pip install torch==2.8.0+cu128 torchaudio==2.8.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
+    pip install omnivoice
+    ```
+  </Step>
+  <Step title="Load the model">
+    Download the pretrained model from Hugging Face:
+
+    ```python
+    from omnivoice import OmniVoice
+    import torch
+
+    model = OmniVoice.from_pretrained(
+        "k2-fsa/OmniVoice",
+        device_map="cuda:0",
+        dtype=torch.float16
+    )
+    ```
+  </Step>
+  <Step title="Generate speech">
+    Clone a voice or describe one with text attributes:
+
+    ```python
+    import torchaudio
+
+    # Voice cloning
+    audio = model.generate(
+        text="Hello, this is a test of zero-shot voice cloning.",
+        ref_audio="ref.wav",
+        ref_text="Transcription of the reference audio.",
+    )
+    torchaudio.save("out.wav", audio[0], 24000)
+    ```
+  </Step>
+  <Step title="Try the web demo">
+    Launch the interactive Gradio UI locally:
+
+    ```bash
+    omnivoice-demo --ip 0.0.0.0 --port 8001
+    ```
+
+    Or try it on [Hugging Face Spaces](https://huggingface.co/spaces/k2-fsa/OmniVoice) without any installation.
+  </Step>
+</Steps>
+
+## Explore further
+
+<CardGroup cols={2}>
+  <Card title="Generation parameters" icon="gear" href="/reference/generation-parameters">
+    Fine-tune diffusion steps, guidance scale, speed, duration, and more.
+  </Card>
+  <Card title="Python API reference" icon="code" href="/reference/python-api">
+    Full API reference for the OmniVoice Python library.
+  </Card>
+  <Card title="CLI tools" icon="terminal" href="/reference/cli-tools">
+    Command-line tools for inference, batch processing, and the web demo.
+  </Card>
+  <Card title="Supported languages" icon="language" href="/reference/languages">
+    Browse the full list of 600+ supported languages and their IDs.
+  </Card>
+</CardGroup>

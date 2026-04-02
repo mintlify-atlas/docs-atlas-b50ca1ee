@@ -1,80 +1,132 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Go from installation to synthesized speech in minutes. Load OmniVoice, clone a voice, design a voice, and save audio output.
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide gets you to working speech synthesis as quickly as possible. All three generation modes are covered: voice cloning, voice design, and auto voice.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  If model download fails or hangs, set the HuggingFace mirror before running:
+  ```bash
+  export HF_ENDPOINT="https://hf-mirror.com"
+  ```
 </Note>
+
+## Python API
+
+<Steps>
+  <Step title="Load the model">
+    Load OmniVoice from the HuggingFace hub. Use `device_map` to target your hardware.
+
+    ```python
+    from omnivoice import OmniVoice
+    import torch
+    import torchaudio
+
+    # NVIDIA GPU
+    model = OmniVoice.from_pretrained(
+        "k2-fsa/OmniVoice",
+        device_map="cuda:0",
+        dtype=torch.float16,
+    )
+
+    # Apple Silicon (MPS)
+    # model = OmniVoice.from_pretrained(
+    #     "k2-fsa/OmniVoice",
+    #     device_map="mps",
+    # )
+    ```
+
+    The model weights are downloaded to your HuggingFace cache on first run and reused on subsequent calls.
+  </Step>
+
+  <Step title="Clone a voice from reference audio">
+    Provide `ref_audio` pointing to a WAV file and an optional `ref_text` transcript. If you omit `ref_text`, Whisper ASR transcribes the audio automatically.
+
+    ```python
+    audio = model.generate(
+        text="Hello, this is a test of zero-shot voice cloning.",
+        ref_audio="ref.wav",
+        ref_text="Transcription of the reference audio.",
+    )
+    # audio is a list of torch.Tensor with shape (1, T) at 24 kHz
+    ```
+
+    <Tip>
+      Omit `ref_text` to let Whisper handle transcription automatically:
+      ```python
+      audio = model.generate(
+          text="Hello, this is a test of zero-shot voice cloning.",
+          ref_audio="ref.wav",
+      )
+      ```
+    </Tip>
+  </Step>
+
+  <Step title="Design a voice with an instruct string">
+    No reference audio needed. Describe the voice with comma-separated attributes. Supported attributes include gender, age, pitch, style, English accent, and Chinese dialect.
+
+    ```python
+    audio = model.generate(
+        text="Hello, this is a test of zero-shot voice design.",
+        instruct="female, low pitch, british accent",
+    )
+    ```
+
+    Combine attributes freely — for example: `"male, elderly, whisper"` or `"female, high pitch, american accent"`.
+  </Step>
+
+  <Step title="Generate with auto voice (no prompt)">
+    Omit all voice prompts and let the model select a voice automatically.
+
+    ```python
+    audio = model.generate(text="This is a sentence without any voice prompt.")
+    ```
+  </Step>
+
+  <Step title="Save the output audio">
+    The return value is a list of `torch.Tensor` with shape `(1, T)` at 24 kHz. Use `torchaudio.save` to write it to disk.
+
+    ```python
+    torchaudio.save("out.wav", audio[0], 24000)
+    ```
+
+    To save multiple outputs from a batch call, iterate over the list:
+
+    ```python
+    for i, wav in enumerate(audio):
+        torchaudio.save(f"out_{i}.wav", wav, 24000)
+    ```
+  </Step>
+</Steps>
+
+## Web demo
+
+Launch a local Gradio web UI without writing any code:
+
+```bash
+omnivoice-demo --ip 0.0.0.0 --port 8001
+```
+
+Open `http://localhost:8001` in your browser. The demo exposes voice cloning and voice design through a point-and-click interface.
+
+<Info>
+  You can also try OmniVoice directly on [HuggingFace Spaces](https://huggingface.co/spaces/k2-fsa/OmniVoice) without any local setup.
+</Info>
+
+## Tuning generation parameters
+
+All three modes accept the same optional keyword arguments on `model.generate()`:
+
+```python
+audio = model.generate(
+    text="...",
+    num_step=32,   # number of diffusion steps (use 16 for faster inference)
+    speed=1.0,     # speaking rate: >1.0 faster, <1.0 slower
+    duration=10.0, # fix output length in seconds (overrides speed when set)
+)
+```
+
+<Warning>
+  When both `duration` and `speed` are provided, `speed` is ignored and `duration` takes precedence.
+</Warning>

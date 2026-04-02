@@ -1,0 +1,327 @@
+---
+title: "CLI tools"
+description: "Reference for the three OmniVoice command-line entry points: omnivoice-demo, omnivoice-infer, and omnivoice-infer-batch."
+---
+
+OmniVoice ships three CLI entry points that cover interactive demos, single-item inference, and large-scale batch inference across multiple GPUs. All features available in the Python API are accessible from the command line.
+
+| Command | Description |
+|---|---|
+| `omnivoice-demo` | Launch a Gradio web UI for voice cloning and voice design |
+| `omnivoice-infer` | Generate audio for a single text input |
+| `omnivoice-infer-batch` | Batch inference distributed across multiple GPUs |
+
+---
+
+## omnivoice-demo
+
+Launch an interactive Gradio web UI that supports voice cloning and voice design. The interface exposes all generation settings via sliders and checkboxes.
+
+```bash
+omnivoice-demo --ip 0.0.0.0 --port 7860
+```
+
+<ParamField body="--model" type="str" default='"k2-fsa/OmniVoice"'>
+  Model checkpoint path (local directory) or HuggingFace repo ID.
+</ParamField>
+
+<ParamField body="--ip" type="str" default='"0.0.0.0"'>
+  IP address the Gradio server binds to. Use `0.0.0.0` to accept connections from all network interfaces.
+</ParamField>
+
+<ParamField body="--port" type="int" default="7860">
+  Port for the Gradio server.
+</ParamField>
+
+<ParamField body="--device" type="str" default="None">
+  Device to load the model onto. Auto-detected (CUDA → MPS → CPU) if not specified.
+</ParamField>
+
+<ParamField body="--root-path" type="str" default="None">
+  Root path prefix for reverse proxy deployments (passed to Gradio's `root_path`).
+</ParamField>
+
+<ParamField body="--share" type="bool" default="False">
+  When set, Gradio creates a temporary public URL via its sharing service.
+</ParamField>
+
+<Note>
+  The demo loads the model with `load_asr=True`, so Whisper is available for auto-transcribing reference audio when no reference text is provided.
+</Note>
+
+---
+
+## omnivoice-infer
+
+Generate audio for a single text input. Supports all three generation modes (voice cloning, voice design, and auto voice) via command-line arguments.
+
+<CodeGroup>
+
+```bash Voice cloning
+omnivoice-infer \
+    --model k2-fsa/OmniVoice \
+    --text "This is a test for text to speech." \
+    --ref_audio ref.wav \
+    --ref_text "Transcription of the reference audio." \
+    --output hello.wav
+```
+
+```bash Voice design
+omnivoice-infer \
+    --model k2-fsa/OmniVoice \
+    --text "This is a test for text to speech." \
+    --instruct "male, British accent" \
+    --output hello.wav
+```
+
+```bash Auto voice
+omnivoice-infer \
+    --model k2-fsa/OmniVoice \
+    --text "This is a test for text to speech." \
+    --output hello.wav
+```
+
+</CodeGroup>
+
+<Tip>
+  Omit `--ref_text` and the model will auto-transcribe `--ref_audio` using Whisper ASR.
+</Tip>
+
+### Required arguments
+
+<ParamField body="--text" type="str" required>
+  Text to synthesize.
+</ParamField>
+
+<ParamField body="--output" type="str" required>
+  Output WAV file path (e.g. `hello.wav`).
+</ParamField>
+
+### Model and device
+
+<ParamField body="--model" type="str" default='"k2-fsa/OmniVoice"'>
+  HuggingFace model repo ID or local directory path.
+</ParamField>
+
+<ParamField body="--device" type="str" default="None">
+  Device for inference. Auto-detected (CUDA → MPS → CPU) if not specified.
+</ParamField>
+
+### Voice cloning
+
+<ParamField body="--ref_audio" type="str" default="None">
+  Reference audio file path for voice cloning mode. When provided without `--ref_text`, Whisper auto-transcribes the audio.
+</ParamField>
+
+<ParamField body="--ref_text" type="str" default="None">
+  Transcript of the reference audio. Optional — omit to use auto-transcription.
+</ParamField>
+
+### Voice design
+
+<ParamField body="--instruct" type="str" default="None">
+  Comma-separated style attributes for voice design mode (e.g. `"female, low pitch, british accent"`). No reference audio is required. See [Voice Design](/guides/voice-design) for the full attribute list.
+</ParamField>
+
+### Language
+
+<ParamField body="--language" type="str" default="None">
+  Language name (e.g. `"English"`) or ISO 639-3 code (e.g. `"en"`). When not specified, the model operates in language-agnostic mode.
+</ParamField>
+
+### Generation parameters
+
+All `OmniVoiceGenerationConfig` fields are available as flags. See [Generation parameters](/reference/generation-parameters) for detailed descriptions.
+
+<ParamField body="--num_step" type="int" default="32">
+  Number of iterative decoding steps.
+</ParamField>
+
+<ParamField body="--guidance_scale" type="float" default="2.0">
+  Classifier-free guidance scale.
+</ParamField>
+
+<ParamField body="--t_shift" type="float" default="0.1">
+  Time-step shift for the noise schedule.
+</ParamField>
+
+<ParamField body="--denoise" type="bool" default="True">
+  Whether to prepend the `<|denoise|>` token.
+</ParamField>
+
+<ParamField body="--postprocess_output" type="bool" default="True">
+  Whether to apply post-processing to generated audio.
+</ParamField>
+
+<ParamField body="--layer_penalty_factor" type="float" default="5.0">
+  Penalty factor for layer-wise sampling.
+</ParamField>
+
+<ParamField body="--position_temperature" type="float" default="5.0">
+  Temperature for mask-position selection.
+</ParamField>
+
+<ParamField body="--class_temperature" type="float" default="0.0">
+  Temperature for token sampling.
+</ParamField>
+
+<ParamField body="--duration" type="float" default="None">
+  Fixed output duration in seconds. Overrides `--speed` when set.
+</ParamField>
+
+<ParamField body="--speed" type="float" default="1.0">
+  Speaking speed factor. `> 1.0` for faster, `< 1.0` for slower. Ignored when `--duration` is set.
+</ParamField>
+
+---
+
+## omnivoice-infer-batch
+
+Distribute TTS generation across multiple GPUs for large-scale tasks. Reads a JSONL file of samples, batches them by estimated audio duration to minimize GPU idle time, and saves each generated WAV to an output directory.
+
+```bash
+omnivoice-infer-batch \
+    --model k2-fsa/OmniVoice \
+    --test_list test.jsonl \
+    --res_dir results/
+```
+
+### JSONL format
+
+Each line of the test list must be a JSON object. Only `id` and `text` are required.
+
+```json
+{
+  "id": "sample_001",
+  "text": "Hello world",
+  "ref_audio": "/path/to/ref.wav",
+  "ref_text": "Reference transcript",
+  "instruct": "female, british accent",
+  "language_id": "en",
+  "language_name": "English",
+  "duration": 10.0,
+  "speed": 1.0
+}
+```
+
+<Expandable title="JSONL field reference">
+  <ResponseField name="id" type="string" required>
+    Unique identifier for the sample. The output file is saved as `<res_dir>/<id>.wav`.
+  </ResponseField>
+
+  <ResponseField name="text" type="string" required>
+    Text to synthesize.
+  </ResponseField>
+
+  <ResponseField name="ref_audio" type="string">
+    Path to the reference audio file for voice cloning mode.
+  </ResponseField>
+
+  <ResponseField name="ref_text" type="string">
+    Transcript of the reference audio. Omit to auto-transcribe with Whisper.
+  </ResponseField>
+
+  <ResponseField name="instruct" type="string">
+    Style instruction for voice design mode (e.g. `"male, young adult"`).
+  </ResponseField>
+
+  <ResponseField name="language_id" type="string">
+    ISO 639-3 language code (e.g. `"en"`, `"zh"`). Takes precedence over `language_name` when both are present.
+  </ResponseField>
+
+  <ResponseField name="language_name" type="string">
+    Full language name (e.g. `"English"`, `"Chinese"`).
+  </ResponseField>
+
+  <ResponseField name="duration" type="number">
+    Fixed output duration in seconds. Overrides `speed` for this sample when set.
+  </ResponseField>
+
+  <ResponseField name="speed" type="number">
+    Speaking speed factor for this sample. Ignored if `duration` is set.
+  </ResponseField>
+</Expandable>
+
+### Required arguments
+
+<ParamField body="--model" type="str" required>
+  HuggingFace model repo ID or local directory path.
+</ParamField>
+
+<ParamField body="--test_list" type="str" required>
+  Path to the JSONL file containing the samples to synthesize.
+</ParamField>
+
+<ParamField body="--res_dir" type="str" required>
+  Directory to save the generated WAV files. Created automatically if it does not exist.
+</ParamField>
+
+### Batching
+
+<ParamField body="--batch_duration" type="float" default="1000.0">
+  Maximum total audio duration (reference + generated, in seconds) per batch. Samples are sorted by estimated duration and grouped greedily. Only applies when `--batch_size` is 0.
+</ParamField>
+
+<ParamField body="--batch_size" type="int" default="0">
+  Fixed number of samples per batch. When greater than `0`, overrides duration-based batching. Samples are sorted by estimated duration to minimize padding.
+</ParamField>
+
+<ParamField body="--nj_per_gpu" type="int" default="1">
+  Number of worker processes to spawn per GPU. Each worker loads its own copy of the model. Increase for workloads with many short samples.
+</ParamField>
+
+<ParamField body="--warmup" type="int" default="0">
+  Number of dummy inference passes each worker runs before processing real samples. Useful for pre-warming CUDA kernels and caches.
+</ParamField>
+
+### Language override
+
+<ParamField body="--lang_id" type="str" default="None">
+  Language ID to use for all samples that do not have a `language_id` or `language_name` field in the JSONL file.
+</ParamField>
+
+### Generation parameters
+
+<ParamField body="--num_step" type="int" default="32">
+  Number of iterative decoding steps.
+</ParamField>
+
+<ParamField body="--guidance_scale" type="float" default="2.0">
+  Classifier-free guidance scale.
+</ParamField>
+
+<ParamField body="--t_shift" type="float" default="0.1">
+  Time-step shift for the noise schedule.
+</ParamField>
+
+<ParamField body="--denoise" type="bool" default="True">
+  Whether to prepend the `<|denoise|>` token.
+</ParamField>
+
+<ParamField body="--preprocess_prompt" type="bool" default="True">
+  Whether to preprocess reference audio (silence removal, trimming).
+</ParamField>
+
+<ParamField body="--postprocess_output" type="bool" default="True">
+  Whether to apply post-processing to generated audio.
+</ParamField>
+
+<ParamField body="--layer_penalty_factor" type="float" default="5.0">
+  Penalty factor for layer-wise sampling.
+</ParamField>
+
+<ParamField body="--position_temperature" type="float" default="5.0">
+  Temperature for mask-position selection.
+</ParamField>
+
+<ParamField body="--class_temperature" type="float" default="0.0">
+  Temperature for token sampling.
+</ParamField>
+
+<ParamField body="--audio_chunk_duration" type="float" default="15.0">
+  Target chunk duration in seconds for long-form generation.
+</ParamField>
+
+<ParamField body="--audio_chunk_threshold" type="float" default="30.0">
+  Estimated duration threshold above which chunking is activated.
+</ParamField>

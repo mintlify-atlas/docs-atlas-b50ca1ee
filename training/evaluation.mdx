@@ -1,0 +1,278 @@
+---
+title: "Evaluation"
+description: "Evaluate OmniVoice models on standard TTS benchmarks using WER, speaker similarity, and UTMOS."
+---
+
+OmniVoice evaluation measures three complementary aspects of generated speech: **intelligibility** (WER/CER), **speaker fidelity** (speaker similarity), and **naturalness** (UTMOS). The evaluation suite covers five standard test sets spanning English, Chinese, and 100+ additional languages.
+
+## Install Evaluation Dependencies
+
+<CodeGroup>
+  ```bash pip
+  pip install omnivoice[eval]
+  ```
+
+  ```bash uv
+  uv sync --extra eval
+  ```
+</CodeGroup>
+
+## Supported Test Sets
+
+| Test Set | Languages | ASR Module | Metrics |
+|---|---|---|---|
+| **LibriSpeech-PC** | English | HuBERT WER | WER + Speaker Similarity + UTMOS |
+| **Seed-TTS (en)** | English | Whisper WER | WER + Speaker Similarity + UTMOS |
+| **Seed-TTS (zh)** | Chinese | Paraformer CER | CER + Speaker Similarity + UTMOS |
+| **FLEURS** | 102 languages | Omnilingual-ASR | WER per-language + macro-average |
+| **MiniMax Multilingual** | 24 languages | Whisper + Paraformer | WER + Speaker Similarity |
+
+## Quick Start
+
+`examples/run_eval.sh` downloads all test sets and evaluation models, then runs inference and scoring for each benchmark:
+
+```bash
+bash examples/run_eval.sh
+```
+
+The script runs six stages:
+
+| Stage | Description |
+|---|---|
+| 1 | Download all test sets and evaluation models from HuggingFace |
+| 2 | Evaluate on LibriSpeech-PC |
+| 3 | Evaluate on Seed-TTS (en) |
+| 4 | Evaluate on Seed-TTS (zh) |
+| 5 | Evaluate on MiniMax Multilingual |
+| 6 | Evaluate on FLEURS |
+
+To evaluate a specific checkpoint, set `CHECKPOINT` at the top of the script:
+
+```bash
+# Default: official OmniVoice checkpoint
+CHECKPOINT=k2-fsa/OmniVoice
+emilia_checkpoint=false
+
+# For a locally trained Emilia checkpoint:
+# CHECKPOINT=k2-fsa/OmniVoice
+# emilia_checkpoint=true
+```
+
+<Note>
+  The Emilia checkpoint (`emilia_checkpoint=true`) disables prompt denoising and language ID conditioning, since the Emilia-trained model does not use those features. The official OmniVoice checkpoint (`emilia_checkpoint=false`) enables them by default.
+</Note>
+
+## Metrics Explained
+
+<AccordionGroup>
+  <Accordion title="WER / CER — Word and Character Error Rate">
+    Measures **intelligibility** by transcribing the generated speech with an ASR model and comparing against the reference transcript.
+
+    **Lower is better.**
+
+    Each test set uses a different ASR backend:
+
+    | Test Set | ASR Model | Metric |
+    |---|---|---|
+    | LibriSpeech-PC | HuBERT-based ASR | WER |
+    | Seed-TTS (en) | Whisper | WER |
+    | Seed-TTS (zh) | Paraformer | CER |
+    | MiniMax | Whisper (non-Chinese), Paraformer (Chinese) | WER / CER |
+    | FLEURS | Omnilingual-ASR multilingual model | WER per-language + macro-avg |
+
+    <Note>
+      FLEURS evaluation requires `omnilingual-asr`, which has dependency conflicts with the main OmniVoice environment. Run FLEURS WER scoring in a separate virtual environment following the [omnilingual-asr install instructions](https://github.com/facebookresearch/omnilingual-asr).
+    </Note>
+  </Accordion>
+
+  <Accordion title="Speaker Similarity — SIM-o">
+    Measures how closely the **speaker identity** of generated audio matches the reference prompt.
+
+    **Higher is better.** Range: −1 to 1 (cosine similarity).
+
+    Computed as the cosine similarity between speaker embeddings extracted from the reference and generated audio. OmniVoice uses an ensemble of **ECAPA-TDNN** and **WavLM**-based speaker encoders for robust cross-model speaker representation.
+
+    Speaker similarity is reported for: LibriSpeech-PC, Seed-TTS (en), Seed-TTS (zh), and MiniMax Multilingual.
+  </Accordion>
+
+  <Accordion title="UTMOS — Predicted MOS">
+    Measures **naturalness** using a neural network trained to predict Mean Opinion Score (MOS) — the standard human listening test score.
+
+    **Higher is better.** Range: 1–5.
+
+    UTMOS is a data-driven MOS predictor that correlates well with human evaluations without requiring actual human raters. It is reported for: LibriSpeech-PC, Seed-TTS (en), and Seed-TTS (zh).
+  </Accordion>
+</AccordionGroup>
+
+## Per-Test-Set Evaluation Details
+
+<AccordionGroup>
+  <Accordion title="LibriSpeech-PC (English)">
+    The most comprehensive single-language benchmark, reporting all three metrics.
+
+    ```bash
+    wav_path="results/librispeech_pc"
+
+    # Inference
+    python -m omnivoice.cli.infer_batch \
+        --model "${CHECKPOINT}" \
+        --test_list "${TTS_EVAL_DATA_DIR}/librispeech_pc_test_clean.jsonl" \
+        --res_dir "${wav_path}" \
+        --preprocess_prompt False \
+        --postprocess_output False \
+        --batch_duration 600 \
+        --audio_chunk_threshold 1000
+
+    # Speaker similarity (ECAPA-TDNN + WavLM)
+    python -m omnivoice.eval.speaker_similarity.sim \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/librispeech_pc_test_clean.jsonl" \
+        --decode-path "${wav_path}.sim.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+
+    # WER via HuBERT ASR
+    python -m omnivoice.eval.wer.hubert \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/librispeech_pc_test_clean_transcript.jsonl" \
+        --decode-path "${wav_path}.wer.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+
+    # UTMOS
+    python -m omnivoice.eval.mos.utmos \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/librispeech_pc_test_clean.jsonl" \
+        --decode-path "${wav_path}.mos.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+    ```
+  </Accordion>
+
+  <Accordion title="Seed-TTS English">
+    English evaluation using Whisper for WER.
+
+    ```bash
+    wav_path="results/seedtts_en"
+
+    python -m omnivoice.cli.infer_batch \
+        --model "${CHECKPOINT}" \
+        --test_list "${TTS_EVAL_DATA_DIR}/seedtts_test_en.jsonl" \
+        --res_dir "${wav_path}" \
+        --preprocess_prompt False --postprocess_output False \
+        --batch_duration 600 --audio_chunk_threshold 1000
+
+    python -m omnivoice.eval.speaker_similarity.sim \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/seedtts_test_en.jsonl" \
+        --decode-path "${wav_path}.sim.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+
+    python -m omnivoice.eval.wer.seedtts \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/seedtts_test_en.jsonl" \
+        --decode-path "${wav_path}.wer.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}" \
+        --lang en
+
+    python -m omnivoice.eval.mos.utmos \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/seedtts_test_en.jsonl" \
+        --decode-path "${wav_path}.mos.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+    ```
+  </Accordion>
+
+  <Accordion title="Seed-TTS Chinese">
+    Chinese evaluation using Paraformer for CER.
+
+    ```bash
+    wav_path="results/seedtts_zh"
+
+    python -m omnivoice.cli.infer_batch \
+        --model "${CHECKPOINT}" \
+        --test_list "${TTS_EVAL_DATA_DIR}/seedtts_test_zh.jsonl" \
+        --res_dir "${wav_path}" \
+        --preprocess_prompt False --postprocess_output False \
+        --batch_duration 600 --audio_chunk_threshold 1000
+
+    python -m omnivoice.eval.speaker_similarity.sim \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/seedtts_test_zh.jsonl" \
+        --decode-path "${wav_path}.sim.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+
+    python -m omnivoice.eval.wer.seedtts \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/seedtts_test_zh.jsonl" \
+        --decode-path "${wav_path}.wer.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}" \
+        --lang zh
+
+    python -m omnivoice.eval.mos.utmos \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/seedtts_test_zh.jsonl" \
+        --decode-path "${wav_path}.mos.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+    ```
+  </Accordion>
+
+  <Accordion title="MiniMax Multilingual (24 languages)">
+    Multilingual benchmark using Whisper for non-Chinese languages and Paraformer for Chinese.
+
+    ```bash
+    wav_path="results/minimax"
+
+    python -m omnivoice.cli.infer_batch \
+        --model "${CHECKPOINT}" \
+        --test_list "${TTS_EVAL_DATA_DIR}/minimax_multilingual_24.jsonl" \
+        --res_dir "${wav_path}" \
+        --preprocess_prompt False --postprocess_output False \
+        --batch_duration 600 --audio_chunk_threshold 1000
+
+    python -m omnivoice.eval.speaker_similarity.sim \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/minimax_multilingual_24.jsonl" \
+        --decode-path "${wav_path}.sim.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+
+    python -m omnivoice.eval.wer.minimax \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/minimax_multilingual_24.jsonl" \
+        --decode-path "${wav_path}.wer.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+    ```
+  </Accordion>
+
+  <Accordion title="FLEURS (102 languages)">
+    The broadest multilingual benchmark. Reports per-language WER and a macro-average across all 102 languages using the Omnilingual-ASR model.
+
+    <Warning>
+      `omnilingual-asr` conflicts with the main OmniVoice environment's `transformers` version. Run WER scoring for FLEURS in a **separate virtual environment**. See [omnilingual-asr](https://github.com/facebookresearch/omnilingual-asr) for install instructions.
+    </Warning>
+
+    ```bash
+    wav_path="results/fleurs"
+
+    # Inference runs fine in the main environment
+    python -m omnivoice.cli.infer_batch \
+        --model "${CHECKPOINT}" \
+        --test_list "${TTS_EVAL_DATA_DIR}/fleurs_multilingual_102.jsonl" \
+        --res_dir "${wav_path}" \
+        --preprocess_prompt False --postprocess_output False \
+        --batch_duration 600 --audio_chunk_threshold 1000
+
+    python -m omnivoice.eval.speaker_similarity.sim \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/fleurs_multilingual_102.jsonl" \
+        --decode-path "${wav_path}.sim.log" \
+        --model-dir "${TTS_EVAL_MODEL_DIR}"
+
+    # WER scoring — run in separate omnilingual-asr environment
+    python omnivoice/eval/wer/fleurs.py \
+        --wav-path "${wav_path}" \
+        --test-list "${TTS_EVAL_DATA_DIR}/fleurs_multilingual_102.jsonl" \
+        --decode-path "${wav_path}.wer.log" \
+        --model-card omniASR_LLM_Unlimited_7B_v2 \
+        --chunk-size 100 \
+        --batch-size 50
+    ```
+  </Accordion>
+</AccordionGroup>

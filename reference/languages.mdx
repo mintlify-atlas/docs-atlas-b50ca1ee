@@ -1,0 +1,199 @@
+---
+title: "Language support"
+description: "OmniVoice supports 600+ languages. Learn how to specify a language in generate(), list all supported languages programmatically, and see a sample of the supported language table."
+---
+
+OmniVoice supports more than 600 languages, making it the broadest-coverage zero-shot TTS model available. Language support is powered by a mapping from ISO 639-3 codes to language names defined in `omnivoice/utils/lang_map.py`.
+
+---
+
+## Specifying a language
+
+Pass the `language` argument to `model.generate()`. You can use either a full language name or an ISO 639-3 code — both are accepted.
+
+```python
+# Using a full language name
+audio = model.generate(text="Bonjour le monde", language="French")
+
+# Using a language code
+audio = model.generate(text="Bonjour le monde", language="fr")
+
+# Language-agnostic mode (model infers the language automatically)
+audio = model.generate(text="Bonjour le monde", language=None)
+```
+
+<Tip>
+  The `language` parameter is optional. Specifying it is never required, but performance is slightly better when you provide it — the model can focus on the correct language's phoneme space rather than inferring it from text.
+</Tip>
+
+### Language-agnostic mode
+
+When `language=None` (the default), the model operates in language-agnostic mode. It infers the language from the input text automatically. This is convenient when processing multilingual batches or when you are unsure of the language.
+
+```python
+# Defaults to language=None — model infers language from text
+audio = model.generate(text="你好，世界")
+```
+
+### Batch mode with per-item languages
+
+You can pass a list of languages for batch generation, with one language per text item:
+
+```python
+audio = model.generate(
+    text=["Hello world", "Bonjour le monde", "Hallo Welt"],
+    language=["English", "French", "German"],
+)
+```
+
+---
+
+## Listing supported languages
+
+Use the model's helper methods to retrieve the full set of supported identifiers at runtime.
+
+```python
+from omnivoice import OmniVoice
+import torch
+
+model = OmniVoice.from_pretrained("k2-fsa/OmniVoice", device_map="cuda:0", dtype=torch.float16)
+
+# Set of supported ISO 639-3 codes
+ids = model.supported_language_ids()
+print("en" in ids)      # True
+print("zh" in ids)      # True
+
+# Set of supported lowercase language names
+names = model.supported_language_names()
+print("english" in names)   # True
+print("french" in names)    # True
+```
+
+<Note>
+  `supported_language_names()` returns lowercase names (e.g. `"english"`, `"french"`). When passing a language name to `generate()`, the lookup is case-insensitive, so `"English"`, `"ENGLISH"`, and `"english"` all work.
+</Note>
+
+---
+
+## Supported languages (sample)
+
+The full list contains 600+ entries. Below is a representative sample covering major world languages as well as regional and minority languages. The complete mapping is at `omnivoice/utils/lang_map.py`.
+
+| Language name | ID |
+|---|---|
+| Afrikaans | `af` |
+| Albanian | `sq` |
+| Amharic | `am` |
+| Arabic (Standard) | `arb` |
+| Armenian | `hy` |
+| Assamese | `as` |
+| Azerbaijani | `az` |
+| Bashkir | `ba` |
+| Basque | `eu` |
+| Belarusian | `be` |
+| Bengali | `bn` |
+| Bosnian | `bs` |
+| Breton | `br` |
+| Bulgarian | `bg` |
+| Burmese | `my` |
+| Cantonese | `yue` |
+| Catalan | `ca` |
+| Cebuano | `ceb` |
+| Chinese | `zh` |
+| Croatian | `hr` |
+| Czech | `cs` |
+| Danish | `da` |
+| Dutch | `nl` |
+| English | `en` |
+| Esperanto | `eo` |
+| Estonian | `et` |
+| Finnish | `fi` |
+| French | `fr` |
+| Galician | `gl` |
+| Georgian | `ka` |
+| German | `de` |
+| Greek | `el` |
+| Guarani | `gn` |
+| Gujarati | `gu` |
+| Haitian | `ht` |
+| Hausa | `ha` |
+| Hawaiian | `haw` |
+| Hebrew | `he` |
+| Hindi | `hi` |
+| Hungarian | `hu` |
+| Icelandic | `is` |
+| Igbo | `ig` |
+| Indonesian | `id` |
+| Irish | `ga` |
+| Italian | `it` |
+| Japanese | `ja` |
+| Javanese | `jv` |
+| Kannada | `kn` |
+| Kazakh | `kk` |
+| Khmer | `km` |
+| Kinyarwanda | `rw` |
+| Kirghiz | `ky` |
+| Korean | `ko` |
+| Lao | `lo` |
+| Latvian | `lv` |
+| Lingala | `ln` |
+| Lithuanian | `lt` |
+| Luxembourgish | `lb` |
+| Macedonian | `mk` |
+| Malay | `ms` |
+| Malayalam | `ml` |
+| Maltese | `mt` |
+| Maori | `mi` |
+| Marathi | `mr` |
+| Min Nan Chinese | `nan` |
+| Mongolian | `mn` |
+| Nepali | `npi` |
+| Norwegian | `no` |
+| Occitan | `oc` |
+| Odia | `ory` |
+| Oromo | `om` |
+| Panjabi | `pa` |
+| Persian | `fa` |
+| Polish | `pl` |
+| Portuguese | `pt` |
+| Pushto | `ps` |
+| Romanian | `ro` |
+| Russian | `ru` |
+| Sanskrit | `sa` |
+| Serbian | `sr` |
+| Shona | `sn` |
+| Sindhi | `sd` |
+| Sinhala | `si` |
+| Slovak | `sk` |
+| Slovenian | `sl` |
+| Somali | `so` |
+| Spanish | `es` |
+| Swahili | `sw` |
+| Swedish | `sv` |
+| Tajik | `tg` |
+| Tamil | `ta` |
+| Tatar | `tt` |
+| Telugu | `te` |
+| Thai | `th` |
+| Tibetan | `bo` |
+| Tigrinya | `ti` |
+| Tswana | `tn` |
+| Turkish | `tr` |
+| Turkmen | `tk` |
+| Uighur | `ug` |
+| Ukrainian | `uk` |
+| Urdu | `ur` |
+| Uzbek | `uz` |
+| Vietnamese | `vi` |
+| Welsh | `cy` |
+| Western Frisian | `fy` |
+| Wolof | `wo` |
+| Xhosa | `xh` |
+| Yakut | `sah` |
+| Yiddish | `yi` |
+| Yoruba | `yo` |
+| Zulu | `zu` |
+
+<Note>
+  The table above is a selection of well-known languages. The full list includes 600+ entries spanning regional dialects, minority languages, and creoles — for example, Egyptian Arabic (`arz`), Algerian Arabic (`arq`), Hakha Chin (`cnh`), Kabyle (`kab`), Nigerian Pidgin (`pcm`), and many more. See `omnivoice/utils/lang_map.py` for the complete mapping.
+</Note>
